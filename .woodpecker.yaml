@@ -8,10 +8,10 @@ when:
 
 steps:
   - name: Build
-    image: maxchernoff.ca/tex:latest
+    image: maxchernoff.ca/tex-wine:latest
     pull: true
     commands:
-      - set -euo pipefail
+      - set -euxo pipefail
       - export TEXMFHOME=$(realpath ./texmf)
       - l3build doc
       - l3build bundle

@@ -99,6 +99,7 @@ end
 
 function target_list.doc.func()
     run("./documentation", "context manual")
+    return 0
 end
 
 -- Tests
