@@ -7,7 +7,7 @@
 `texlive-auto-package-install`
 ==============================
 
-A script that automatically installs missing TeX Live packages during
+A package that automatically installs missing TeX Live packages during
 compilation.
 
 
