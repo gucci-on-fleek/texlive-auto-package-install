@@ -20,6 +20,12 @@ luatexbase.provides_module {
 --- Constants ---
 -----------------
 
+-- Save some globals for a slight speed boost
+local tonumber = tonumber
+local pairs = pairs
+local ipairs = ipairs
+local max = math.max
+
 -- Used for tex.sprint
 local string_catcodes = token.create("c_str_cctab").mode
 
@@ -38,16 +44,16 @@ local font_extension_order = { "otf",  "ttc", "ttf", "afm", "pfb", "tfm" }
 local now = os.time()
 local yesterday = now - 86400
 
--- The mirror redirector doesn't work for HTTP (no TLS), so we'll just hard code
--- this for now.
-local ctan_url = "http://ctan.math.utah.edu/ctan/tex-archive/"
+-- Hard coded for now
+local texlive_url = "http://www.tug.org/.texlive/texmf-dist/"
+local tlpdb_url = "http://www.tug.org/.texlive/tlpkg/texlive.tlpdb"
 
 -- Set the user agent for HTTP requests
 --- @diagnostic disable-next-line: undefined-field
 socket.http.USERAGENT = "texlive-auto-package-install/0.0.0 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
 
--- The file name of the CTAN files cache
-local ctan_files_cache_name = "ctan-files.luc.gz"
+-- The file name of the TeX Live files cache
+local texlive_files_cache_name = "texlive-files.luc.gz"
 
 -----------------------------------------
 --- General-purpose Utility Functions ---
@@ -113,14 +119,14 @@ local function register_tex_cmd(name, func, args, index)
     token.set_lua(name, index)
 end
 
---- Perform an HTTP GET request
+--- Perform an HTTP GET request to the TeX Live server
 --- @param path string The path to request
 --- @return string|nil body The response body, or `nil` on failure
 --- @return integer|nil status The HTTP status code
 --- @return table<string, string>|nil headers The response headers
-local function ctan_get(path)
+local function texlive_get(path)
     --- @diagnostic disable-next-line: undefined-field
-    return socket.http.request(ctan_url .. path)
+    return socket.http.request(texlive_url .. path)
 end
 
 local cache_path do
@@ -185,83 +191,45 @@ local function binary_to_table(compressed)
 end
 
 
-------------------
---- CTAN Files ---
-------------------
+----------------------
+--- TeX Live Files ---
+----------------------
 
-local parse_ctan_files do
-    local P, R, S, C, Ct, Cg, Cf, Cc =
-        lpeg.P, lpeg.R, lpeg.S, lpeg.C, lpeg.Ct, lpeg.Cg, lpeg.Cf, lpeg.Cc
-    local os_time, tonumber = os.time, tonumber
-
-    local year = S("12") * S("9012") * R("09") * R("09")
-    local month = S("01") * R("09")
-    local day = S("0123") * R("09")
-    local date = Ct(
-        Cg(year, "year") * P("/") *
-        Cg(month, "month") * P("/") *
-        Cg(day, "day")
-    )
-
-    local size = S(" \t")^0 * C(R("09")^1)
-
-    local path_component = 1 - S("/\n")
-    local path = C(
-        (path_component^1 * P("/"))^0 *
-        C(path_component^1)
-    )
-
-    local column_separator = P(" | ")
-    local line = Ct(
-        (date / os_time) * column_separator *
-        (size / 0) * column_separator *
-        path *
-        P("\n")
-    )
-
-    local lines = Cf(Cc({}) * line^0, function(t, line)
-        t[line[3]] = line
-        return t
-    end)
-
-    --- @class (exact) ctan_files: table A table representing a token.
-    --- @field [1] integer (time) The modification time as a Unix timestamp
-    --- @field [2] string  (path) The full path to the file on CTAN
-    --- @field [3] string  (name) The name of the file
-
-    --- Parse CTAN `FILES.byname` data
-    --- @param data string The contents of a `FILES.byname` file
-    --- @return table<string, ctan_files> files A table mapping file names to their
-    ---    paths on CTAN
-    function parse_ctan_files(data)
-        return lines:match(data)
-    end
-end
-
-local ctan_files = table.setmetatableindex(function(t, name)
-
-    local cache_file = cache_path(ctan_files_cache_name)
+local newest_revision = 0
+local texlive_files = table.setmetatableindex(function(t, name)
+    local cache_file = cache_path(texlive_files_cache_name)
     -- Skip if the cache has already been populated
     if next(t) then
         -- pass
-    -- Fetch from CTAN if the cache is missing or stale
+    -- Fetch from TeX Live if the cache is missing or stale
     elseif (not io.exists(cache_file)) or
            (lfs.attributes(cache_file, "modification") < yesterday)
     then
-        -- Fetch from CTAN
-        local body, status = ctan_get("FILES.byname")
+        -- Fetch from TeX Live
+        --- @diagnostic disable-next-line: undefined-field
+        local body, status = socket.http.request(tlpdb_url)
         if not body or status ~= 200 then
-            tex_error("Could not fetch CTAN file list (HTTP status " .. tostring(status) .. ")")
+            tex_error("Could not fetch TeX Live file list (HTTP status " .. tostring(status) .. ")")
             return -- (Unreachable)
         end
 
-        local files = parse_ctan_files(body)
+        local files = {}
+        for _, section in ipairs(body:split("\n\n")) do
+            local revision = tonumber(section:match("revision (%d+)"))
+            newest_revision = max(newest_revision, revision or 0)
+            for path, name in section:gmatch("\n texmf%-dist/([^ \n]+/([^/ \n]+))") do
+                files[name] = { path, revision }
+            end
+        end
 
         -- Copy into the table
         table.merge(t, files)
 
         -- Save to cache
-        local compressed = table_to_binary(files)
+        local compressed = table_to_binary {
+            newest_revision = newest_revision,
+            files = files,
+        }
         io.savedata(cache_file, compressed)
 
     -- Load from the cache otherwise
@@ -272,14 +240,18 @@ local ctan_files = table.setmetatableindex(function(t, name)
             tex_error("Could not read CTAN files cache")
             return -- (Unreachable)
         end
-        local files = binary_to_table(compressed)
+        local data = binary_to_table(compressed)
 
         -- Copy into the table
-        table.merge(t, files)
+        table.merge(t, data.files)
+        newest_revision = data.newest_revision
+
+        inspect(t)
     end
 
     return rawget(t, name)
 end)
+
 
 -------------
 --- Hooks ---
@@ -338,7 +310,7 @@ end
 --- @return nil found_name Always returns `nil`
 function before_hooks.default(caller, asked_name)
     print(">>>", caller, asked_name)
-    inspect(ctan_files[asked_name])
+    inspect(texlive_files[asked_name])
     return nil
 end
 
