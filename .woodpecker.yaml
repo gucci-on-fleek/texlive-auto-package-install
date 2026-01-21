@@ -19,12 +19,14 @@ steps:
   - name: Release
     when:
       event: tag
-    image: woodpeckerci/plugin-release
+    image: docker.io/woodpeckerci/plugin-release
     settings:
+      overwrite: false
       title: ./release.title
       files:
         - texlive-auto-package-install-*.tds.zip
         - texlive-auto-package-install-*.ctan.zip
+      file-exists: fail
       api_key:
         from_secret: GITHUB_TOKEN
 
