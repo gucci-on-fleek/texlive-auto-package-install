@@ -31,4 +31,4 @@ version 4.0](https://creativecommons.org/licenses/by-sa/4.0/legalcode)
 or greater.
 
 ---
-_v0.0.0 (2025-01-20)_ <!--%%version %%dashdate-->
+_v0.1.0 (2026-01-21)_ <!--%%version %%dashdate-->
