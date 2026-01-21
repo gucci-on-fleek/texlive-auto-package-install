@@ -6,8 +6,8 @@
 
 -- Initialization
 module = "texlive-auto-package-install"
-local version = "0.0.0" --%%version
-local date = "2026-01-20" --%%dashdate
+local version = "0.1.0" --%%version
+local date = "2026-01-21" --%%dashdate
 
 local orig_targets = target_list
 target_list = {}
@@ -36,9 +36,6 @@ function update_tag(name, content, version, date)
         "(%d%d%d%d/%d%d/%d%d)([^\n]*)%%%%slashdate",
         date:gsub("-", "/") .. "%2%%%%slashdate"
     )
-
-    -- Argh!
-    os.execute("chmod a+x source/extractbb.lua")
 
     return content
 end
