@@ -7,9 +7,9 @@
 --- Initialization ---
 ----------------------
 
-local name = "auto-package-install"
+local pkg_name = "auto-package-install"
 luatexbase.provides_module {
-    name = name,
+    name = pkg_name,
     date = "2026/01/20", --%%slashdate
     version = "0.0.0", --%%version
     description = "Automatically installs missing LaTeX packages from TeX Live",
@@ -55,6 +55,8 @@ socket.http.USERAGENT = "texlive-auto-package-install/0.0.0 (+https://github.com
 -- The file name of the TeX Live files cache
 local texlive_files_cache_name = "texlive-files.luc.gz"
 
+local revision_suffix = ".REVISION"
+
 -----------------------------------------
 --- General-purpose Utility Functions ---
 -----------------------------------------
@@ -63,7 +65,7 @@ local texlive_files_cache_name = "texlive-files.luc.gz"
 --- @param message string The error message
 --- @return nil
 local function tex_error(message)
-    luatexbase.module_error(name, message)
+    luatexbase.module_error(pkg_name, message)
 end
 
 --- Creates a TeX command that evaluates a Lua function
@@ -145,7 +147,7 @@ local cache_path do
                 if not file.is_writable(cache) then
                     goto continue
                 end
-                cache_root = cache .. "/" .. name .. "/"
+                cache_root = cache .. "/" .. pkg_name .. "/"
                 break
                 ::continue::
             end
@@ -245,12 +247,45 @@ local texlive_files = table.setmetatableindex(function(t, name)
         -- Copy into the table
         table.merge(t, data.files)
         newest_revision = data.newest_revision
-
-        inspect(t)
     end
 
     return rawget(t, name)
 end)
+
+
+--- Gets the local path from a file name, possibly downloading it first
+--- @param name string The file name
+--- @return string|nil path The local path to the file, or `nil` if not found
+local function download_file(name)
+    local data = texlive_files[name]
+    if not data then
+        return nil
+    end
+    local path, revision = data[1], data[2]
+
+    local local_revision_file = cache_path(name .. revision_suffix)
+    local local_revision = tonumber(io.loaddata(local_revision_file)) or 0
+
+    if local_revision < revision then
+        -- Download the file
+        local body, status = texlive_get(path)
+        if not body or status ~= 200 then
+            tex_error("Could not download file " .. name .. " (HTTP status " .. tostring(status) .. ")")
+            return nil
+        end
+
+        -- Save to cache
+        io.savedata(cache_path(name), body)
+
+        -- Save the revision file
+        io.savedata(
+            cache_path(name .. revision_suffix),
+            tostring(revision)
+        )
+    end
+
+    return cache_path(name)
+end
 
 
 -------------
@@ -310,7 +345,6 @@ end
 --- @return nil found_name Always returns `nil`
 function before_hooks.default(caller, asked_name)
     print(">>>", caller, asked_name)
-    inspect(texlive_files[asked_name])
     return nil
 end
 
@@ -321,6 +355,9 @@ end
 --- @return string|nil found_name Passes through the found name unchanged
 function after_hooks.default(caller, asked_name, found_name)
     print("<<<", caller, asked_name, found_name)
+    if found_name == nil then
+        found_name = download_file(asked_name)
+    end
     return found_name
 end
 
@@ -401,6 +438,25 @@ function fonts.names.lookup_font_file(asked_name)
     end
 end
 
+-- Add an additional Lua package searcher
+table.insert(package.searchers, function(module_name)
+    local path = hook(
+        "package.searcher",
+        module_name .. ".lua",
+        function(name) return nil end
+    )
+    if not path then
+        return "\n\tno TeX Live package found for " .. module_name
+    end
+
+    local func, err = loadfile(path)
+    if not func then
+        return "\n\terror loading TeX Live package " .. module_name .. ": " .. tostring(err)
+    end
+
+    return func
+end)
+
 --------------------
 --- TeX Commands ---
 --------------------
@@ -433,15 +489,15 @@ register_tex_cmd(
 -- Command to enable the callbacks
 register_tex_cmd("enable", function()
     for callback, func in pairs(callbacks) do
-        luatexbase.add_to_callback(callback, func, name .. "." .. callback)
+        luatexbase.add_to_callback(callback, func, pkg_name .. "." .. callback)
     end
 end, { })
 
 -- Command to disable the callbacks
 register_tex_cmd("disable", function()
     for callback, func in pairs(callbacks) do
-        if luatexbase.in_callback(callback, name .. "." .. callback) then
-            luatexbase.remove_from_callback(callback, name .. "." .. callback)
+        if luatexbase.in_callback(callback, pkg_name .. "." .. callback) then
+            luatexbase.remove_from_callback(callback, pkg_name .. "." .. callback)
         end
     end
 end, { })
