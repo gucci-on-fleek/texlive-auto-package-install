@@ -93,7 +93,7 @@ local function run(cwd, cmd)
         print(("\n"):rep(5))
         print("Error code " .. error .. " for command " .. cmd .. ".")
         print("\n")
-        os.exit(error)
+        os.exit(1)
     end
 end
 
