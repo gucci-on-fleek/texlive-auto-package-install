@@ -1,0 +1,29 @@
+# texlive-auto-package-install
+# https://github.com/gucci-on-fleek/texlive-auto-package-install
+# SPDX-License-Identifier: MPL-2.0+
+# SPDX-FileCopyrightText: 2026 Max Chernoff
+when:
+  - event: [push, tag, pull_request]
+    branch: master
+
+steps:
+  - name: Build
+    image: maxchernoff.ca/tex:latest
+    pull: true
+    commands:
+      - set -euo pipefail
+      - export TEXMFHOME=$(realpath ./texmf)
+      - l3build doc
+      - l3build bundle
+
+  - name: Release
+    when:
+      event: tag
+    image: woodpeckerci/plugin-release
+    settings:
+      title: ./release.title
+      files:
+        - texlive-auto-package-install-*.tds.zip
+        - texlive-auto-package-install-*.ctan.zip
+      api_key:
+        from_secret: GITHUB_TOKEN
