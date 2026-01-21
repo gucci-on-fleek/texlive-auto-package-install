@@ -51,8 +51,31 @@ packages from \TeX{}~Live when compiling documents.
 When compiling a \LaTeX{} document, if any files are missing from your
 \TeX{}~Live installation, this package will automatically download and install
 them. To do so, make sure to put
-\typ[option=TEX]{\RequirePackage{auto-package-install}} as the very first line of your
-document preamble.
+\typ[option=TEX]{\RequirePackage{auto-package-install}} as the very first line
+of your document preamble. Make sure to compile with \typ{--socket} (or
+\typ{--shell-escape}), otherwise the package won't work.
+
+\section{Demonstration}
+
+After installing only \typ{scheme-basic}, the following file compiles
+without any errors:
+
+\startTEX
+\RequirePackage{auto-package-install}
+\documentclass{article}
+
+\usepackage{amsmath}
+
+\usepackage{lua-widow-control}
+
+\usepackage{fontspec}
+\setmainfont{NewCM10-Regular.otf}
+
+\begin{document}
+     Hello, world!
+\end{document}
+\stopTEX
+
 
 \page
 \setuplayout[

@@ -50,10 +50,6 @@ local yesterday = now - 86400
 local texlive_url = "http://www.tug.org/.texlive/texmf-dist/"
 local tlpdb_url = "http://www.tug.org/.texlive/tlpkg/texlive.tlpdb"
 
--- Set the user agent for HTTP requests
---- @diagnostic disable-next-line: undefined-field
-socket.http.USERAGENT = "texlive-auto-package-install/0.1.1 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
-
 -- The file name of the TeX Live files cache
 local texlive_files_cache_name = "texlive-files.luc.gz"
 
@@ -207,6 +203,15 @@ end
 ----------------------
 --- TeX Live Files ---
 ----------------------
+
+if not package.loaded.socket then
+    tex_error("You must compile with the ``--socket'' (or ``--shell-escape'') flag to use auto-package-install")
+    return
+end
+
+-- Set the user agent for HTTP requests
+--- @diagnostic disable-next-line: undefined-field
+socket.http.USERAGENT = "texlive-auto-package-install/0.1.1 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
 
 local newest_revision = 0
 local texlive_files = table.setmetatableindex(function(t, name)
