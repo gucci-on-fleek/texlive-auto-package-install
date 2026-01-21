@@ -13,7 +13,7 @@ local pkg_name = "auto-package-install"
 luatexbase.provides_module {
     name = pkg_name,
     date = "2026/01/21", --%%slashdate
-    version = "0.1.1", --%%version
+    version = "0.1.2", --%%version
     description = "Automatically installs missing LaTeX packages from TeX Live",
 }
 
@@ -211,7 +211,7 @@ end
 
 -- Set the user agent for HTTP requests
 --- @diagnostic disable-next-line: undefined-field
-socket.http.USERAGENT = "texlive-auto-package-install/0.1.1 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
+socket.http.USERAGENT = "texlive-auto-package-install/0.1.2 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
 
 local newest_revision = 0
 local texlive_files = table.setmetatableindex(function(t, name)

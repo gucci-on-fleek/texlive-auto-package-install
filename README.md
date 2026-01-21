@@ -55,4 +55,4 @@ version 4.0](https://creativecommons.org/licenses/by-sa/4.0/legalcode)
 or greater.
 
 ---
-_v0.1.1 (2026-01-21)_ <!--%%version %%dashdate-->
+_v0.1.2 (2026-01-21)_ <!--%%version %%dashdate-->
