@@ -13,7 +13,7 @@ local pkg_name = "auto-package-install"
 luatexbase.provides_module {
     name = pkg_name,
     date = "2026/01/21", --%%slashdate
-    version = "0.1.0", --%%version
+    version = "0.1.1", --%%version
     description = "Automatically installs missing LaTeX packages from TeX Live",
 }
 
@@ -52,7 +52,7 @@ local tlpdb_url = "http://www.tug.org/.texlive/tlpkg/texlive.tlpdb"
 
 -- Set the user agent for HTTP requests
 --- @diagnostic disable-next-line: undefined-field
-socket.http.USERAGENT = "texlive-auto-package-install/0.1.0 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
+socket.http.USERAGENT = "texlive-auto-package-install/0.1.1 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
 
 -- The file name of the TeX Live files cache
 local texlive_files_cache_name = "texlive-files.luc.gz"
