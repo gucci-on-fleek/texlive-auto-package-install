@@ -239,15 +239,14 @@ local parse_ctan_files do
 end
 
 local ctan_files = table.setmetatableindex(function(t, name)
-    if next(t) then
-        -- The files have already been populated
-        return rawget(t, name)
-    end
 
-    -- Try loading from the cache if it's less than a day old
     local cache_file = cache_path(ctan_files_cache_name)
-    if  (not io.exists(cache_file)) or
-        (lfs.attributes(cache_file, "modification") < yesterday)
+    -- Skip if the cache has already been populated
+    if next(t) then
+        -- pass
+    -- Fetch from CTAN if the cache is missing or stale
+    elseif (not io.exists(cache_file)) or
+           (lfs.attributes(cache_file, "modification") < yesterday)
     then
         -- Fetch from CTAN
         local body, status = ctan_get("FILES.byname")
@@ -264,6 +263,8 @@ local ctan_files = table.setmetatableindex(function(t, name)
         -- Save to cache
         local compressed = table_to_binary(files)
         io.savedata(cache_file, compressed)
+
+    -- Load from the cache otherwise
     else
         -- Load from cache
         local compressed = io.loaddata(cache_file)
