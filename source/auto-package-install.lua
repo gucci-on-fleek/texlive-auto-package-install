@@ -30,6 +30,8 @@ local font_extension_to_kpse_type = {
     tfm = "tfm",
 }
 local font_extension_order = { "otf",  "ttc", "ttf", "afm", "pfb", "tfm" }
+local now = os.time()
+local yesterday = now - 86400
 
 
 -----------------------------------------
@@ -101,18 +103,69 @@ end
 --- Parsing ---
 ---------------
 
+local parse_ctan_files do
+    local P, R, S, C, Ct, Cg, Cf, Cc =
+        lpeg.P, lpeg.R, lpeg.S, lpeg.C, lpeg.Ct, lpeg.Cg, lpeg.Cf, lpeg.Cc
+    local os_time, tonumber = os.time, tonumber
+
+    local year = S("12") * S("9012") * R("09") * R("09")
+    local month = S("01") * R("09")
+    local day = S("0123") * R("09")
+    local date = Ct(
+        Cg(year, "year") * P("/") *
+        Cg(month, "month") * P("/") *
+        Cg(day, "day")
+    )
+
+    local size = S(" \t")^0 * C(R("09")^1)
+
+    local path_component = 1 - S("/\n")
+    local path = C(
+        (path_component^1 * P("/"))^0 *
+        C(path_component^1)
+    )
+
+    local column_separator = P(" | ")
+    local line = Ct(
+        (date / os_time) * column_separator *
+        (size / 0) * column_separator *
+        path *
+        P("\n")
+    )
+
+    local lines = Cf(Cc({}) * line^0, function(t, line)
+        t[line[3]] = line
+        return t
+    end)
+
+    --- @class (exact) ctan_files: table A table representing a token.
+    --- @field [1] integer (time) The modification time as a Unix timestamp
+    --- @field [2] string  (path) The full path to the file on CTAN
+    --- @field [3] string  (name) The name of the file
+
+    --- Parse CTAN `FILES.byname` data
+    --- @param data string The contents of a `FILES.byname` file
+    --- @return table<string, ctan_files> files A table mapping file names to their
+    ---    paths on CTAN
+    function parse_ctan_files(data)
+        return lines:match(data)
+    end
+end
+
+parse_ctan_files(io.loaddata("/tmp/tmp.H8J6SVHbeh/FILES.byname"))
+os.exit(0)
 
 -------------
 --- Hooks ---
 -------------
 
---- @type table<string, fun(asked_name: string):(found_name: string|nil)>
+--- @type table<string, fun(caller: string, asked_name: string):(found_name: string|nil)>
 --- A table of hook functions for file finding. If you return a string, the
 --- search will immediately return that string; if you return `nil`, the default
 --- search will be performed.
 local before_hooks = {}
 
---- @type table<string, fun(asked_name: string, found_name: string|nil):(found_name: string|nil)>
+--- @type table<string, fun(caller: string, asked_name: string, found_name: string|nil):(found_name: string|nil)>
 --- A table of hook functions for file finding. These are called after the
 --- default search is performed. Whatever you return will be used exactly as the
 --- result of the search.
@@ -127,7 +180,7 @@ local after_hooks = {}
 --- @return string|nil found_name The (possibly modified) name of the file found
 local function hook(caller, asked_name, fallback_func)
     local before_func = before_hooks[caller] or before_hooks["default"]
-    local found_name = before_func(asked_name)
+    local found_name = before_func(caller, asked_name)
     if found_name then
         return found_name
     end
@@ -135,7 +188,7 @@ local function hook(caller, asked_name, fallback_func)
     found_name = fallback_func(asked_name)
 
     local after_func = after_hooks[caller] or after_hooks["default"]
-    found_name = after_func(asked_name, found_name)
+    found_name = after_func(caller, asked_name, found_name)
 
     return found_name
 end
@@ -154,19 +207,21 @@ local function hook_wrapper(caller, fallback_func)
 end
 
 --- The default before hook
+--- @param caller string The name of the function that called this hook
 --- @param asked_name string The name of the file being searched for
 --- @return nil found_name Always returns `nil`
-function before_hooks.default(asked_name)
-    print(">>>", asked_name)
+function before_hooks.default(caller, asked_name)
+    print(">>>", caller, asked_name)
     return nil
 end
 
 --- The default after hook
+--- @param caller string The name of the function that called this hook
 --- @param asked_name string The name of the file being searched for
 --- @param found_name string|nil The name of the file found, or `nil`
 --- @return string|nil found_name Passes through the found name unchanged
-function after_hooks.default(asked_name, found_name)
-    print("<<<", asked_name, found_name)
+function after_hooks.default(caller, asked_name, found_name)
+    print("<<<", caller, asked_name, found_name)
     return found_name
 end
 
