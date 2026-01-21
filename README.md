@@ -10,6 +10,17 @@
 A script that automatically installs missing TeX Live packages during
 compilation.
 
+
+Usage
+-----
+
+When compiling a LaTeX document, if any files are missing from your
+TeX Live installation, this package will automatically download and
+install them. To do so, make sure to put
+`\RequirePackage{auto-package-install}` as the very first line of your
+document preamble.
+
+
 Licence
 -------
 

@@ -46,7 +46,13 @@ packages from \TeX{}~Live when compiling documents.
 \subject{Contents}
 \placecontent[criterium=all]
 
-%% Content goes here
+\section{Usage}
+
+When compiling a \LaTeX{} document, if any files are missing from your
+\TeX{}~Live installation, this package will automatically download and install
+them. To do so, make sure to put
+\inlineTEX{\RequirePackage{auto-package-install}} as the very first line of your
+document preamble.
 
 \page
 \setuplayout[
