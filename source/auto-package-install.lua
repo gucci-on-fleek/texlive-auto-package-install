@@ -7,6 +7,8 @@
 --- Initialization ---
 ----------------------
 
+local DEBUG = _G.DEBUG or false --- @diagnostic disable-line: undefined-field
+
 local pkg_name = "auto-package-install"
 luatexbase.provides_module {
     name = pkg_name,
@@ -60,6 +62,15 @@ local revision_suffix = ".REVISION"
 -----------------------------------------
 --- General-purpose Utility Functions ---
 -----------------------------------------
+
+--- Prints a debug message if debugging is enabled
+--- @param ... any The values to print
+--- @return nil
+local function debug(...)
+    if DEBUG then
+        print("[auto-package-install]", ...)
+    end
+end
 
 --- Raise a TeX error from Lua
 --- @param message string The error message
@@ -344,7 +355,7 @@ end
 --- @param asked_name string The name of the file being searched for
 --- @return nil found_name Always returns `nil`
 function before_hooks.default(caller, asked_name)
-    print(">>>", caller, asked_name)
+    debug(">>>", caller, asked_name)
     return nil
 end
 
@@ -354,7 +365,7 @@ end
 --- @param found_name string|nil The name of the file found, or `nil`
 --- @return string|nil found_name Passes through the found name unchanged
 function after_hooks.default(caller, asked_name, found_name)
-    print("<<<", caller, asked_name, found_name)
+    debug("<<<", caller, asked_name, found_name)
     if found_name == nil then
         found_name = download_file(asked_name)
     end
