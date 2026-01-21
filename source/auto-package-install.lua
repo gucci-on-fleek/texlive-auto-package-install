@@ -20,7 +20,10 @@ luatexbase.provides_module {
 --- Constants ---
 -----------------
 
+-- Used for tex.sprint
 local string_catcodes = token.create("c_str_cctab").mode
+
+-- Font type handling
 local font_extension_to_kpse_type = {
     otf = "opentype fonts",
     ttc = "truetype fonts",
@@ -30,9 +33,21 @@ local font_extension_to_kpse_type = {
     tfm = "tfm",
 }
 local font_extension_order = { "otf",  "ttc", "ttf", "afm", "pfb", "tfm" }
+
+-- The current time
 local now = os.time()
 local yesterday = now - 86400
 
+-- The mirror redirector doesn't work for HTTP (no TLS), so we'll just hard code
+-- this for now.
+local ctan_url = "http://ctan.math.utah.edu/ctan/tex-archive/"
+
+-- Set the user agent for HTTP requests
+--- @diagnostic disable-next-line: undefined-field
+socket.http.USERAGENT = "texlive-auto-package-install/0.0.0 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)" --%%version
+
+-- The file name of the CTAN files cache
+local ctan_files_cache_name = "ctan-files.luc.gz"
 
 -----------------------------------------
 --- General-purpose Utility Functions ---
@@ -98,10 +113,81 @@ local function register_tex_cmd(name, func, args, index)
     token.set_lua(name, index)
 end
 
+--- Perform an HTTP GET request
+--- @param path string The path to request
+--- @return string|nil body The response body, or `nil` on failure
+--- @return integer|nil status The HTTP status code
+--- @return table<string, string>|nil headers The response headers
+local function ctan_get(path)
+    --- @diagnostic disable-next-line: undefined-field
+    return socket.http.request(ctan_url .. path)
+end
 
----------------
---- Parsing ---
----------------
+local cache_path do
+    local cache_root --- @type string|nil
+
+    --- Gets the path to a file in the cache directory
+    --- @param path string The path to a file relative to a TEXMF
+    --- @return string path The absolute path to the file in the cache directory
+    function cache_path(path)
+        if not cache_root then
+            local caches = kpse.expand_path("$TEXMFCACHE"):split(":") --- @cast caches string[]
+            for _, cache in ipairs(caches) do
+                if not kpse.out_name_ok_silent_extended(cache) then
+                    goto continue
+                end
+                if not file.is_writable(cache) then
+                    goto continue
+                end
+                cache_root = cache .. "/" .. name .. "/"
+                break
+                ::continue::
+            end
+
+            if not cache_root then
+                tex_error("Could not find a writable TEXMFCACHE directory")
+            end
+        end
+
+        local full_path = cache_root .. path
+        local dirname = file.pathpart(full_path)
+        lfs.mkdirp(dirname) --- @diagnostic disable-line: undefined-field
+        return full_path
+    end
+end
+
+--- Serialize a table to a compressed binary string
+--- @param t table The table to serialize
+--- @return string compressed The compressed binary string
+local function table_to_binary(t)
+    local str = table.serialize(t, true)
+    local func, err = load(str, "t")
+    if not func then
+        error("Could not serialize table: " .. tostring(err))
+    end
+
+    local binary = string.dump(func, true)
+    local compressed = gzip.compress(binary) --- @cast compressed string
+    return compressed
+end
+
+--- Deserialize a table from a compressed binary string
+--- @param compressed string The compressed binary string
+--- @return table t The deserialized table
+local function binary_to_table(compressed)
+    local binary = gzip.decompress(compressed) --- @cast binary string
+    local func, err = load(binary, "b")
+    if not func then
+        error("Could not deserialize table: " .. tostring(err))
+    end
+    local t = func() --- @cast t table
+    return t
+end
+
+
+------------------
+--- CTAN Files ---
+------------------
 
 local parse_ctan_files do
     local P, R, S, C, Ct, Cg, Cf, Cc =
@@ -152,8 +238,47 @@ local parse_ctan_files do
     end
 end
 
-parse_ctan_files(io.loaddata("/tmp/tmp.H8J6SVHbeh/FILES.byname"))
-os.exit(0)
+local ctan_files = table.setmetatableindex(function(t, name)
+    if next(t) then
+        -- The files have already been populated
+        return rawget(t, name)
+    end
+
+    -- Try loading from the cache if it's less than a day old
+    local cache_file = cache_path(ctan_files_cache_name)
+    if  (not io.exists(cache_file)) or
+        (lfs.attributes(cache_file, "modification") < yesterday)
+    then
+        -- Fetch from CTAN
+        local body, status = ctan_get("FILES.byname")
+        if not body or status ~= 200 then
+            tex_error("Could not fetch CTAN file list (HTTP status " .. tostring(status) .. ")")
+            return -- (Unreachable)
+        end
+
+        local files = parse_ctan_files(body)
+
+        -- Copy into the table
+        table.merge(t, files)
+
+        -- Save to cache
+        local compressed = table_to_binary(files)
+        io.savedata(cache_file, compressed)
+    else
+        -- Load from cache
+        local compressed = io.loaddata(cache_file)
+        if not compressed then
+            tex_error("Could not read CTAN files cache")
+            return -- (Unreachable)
+        end
+        local files = binary_to_table(compressed)
+
+        -- Copy into the table
+        table.merge(t, files)
+    end
+
+    return rawget(t, name)
+end)
 
 -------------
 --- Hooks ---
@@ -212,6 +337,7 @@ end
 --- @return nil found_name Always returns `nil`
 function before_hooks.default(caller, asked_name)
     print(">>>", caller, asked_name)
+    inspect(ctan_files[asked_name])
     return nil
 end
 
