@@ -3,11 +3,52 @@
 % SPDX-License-Identifier: MPL-2.0+
 % SPDX-FileCopyrightText: 2026 Max Chernoff
 
-% Preliminaries
-\NeedsTeXFormat[2015/01/01]{LaTeX2e}
+%%%%%%%%%%%%%%%%%%%%%%
+%%% Initialization %%%
+%%%%%%%%%%%%%%%%%%%%%%
 
+%% We need expl3 built in to the format
+\NeedsTeXFormat{LaTeX2e}[2020/02/02]
+
+%% Switch to expl3 syntax
 \ProvidesExplPackage
-    {syntax}
-    {0000/00/00}
-    {v0.0.0}
-    {syntax}
+    {auto-package-install}
+    {2026/01/20} %%slashdate
+    {v0.0.0} %%version
+    {Automatically installs missing LaTeX packages from TeX Live}
+
+
+%%%%%%%%%%%%%%%%
+%%% Variants %%%
+%%%%%%%%%%%%%%%%
+
+\cs_generate_variant:Nn \msg_new:nnnn { Vnnn }
+\cs_generate_variant:Nn \msg_critical:nn { Vn }
+\cs_generate_variant:Nn \hook_gput_code:nnn { nVn }
+\cs_generate_variant:Nn \lua_load_module:n { V }
+
+%%%%%%%%%%%%%%%%%
+%%% Constants %%%
+%%%%%%%%%%%%%%%%%
+
+\str_const:Nn \c__autopkg_name_str { auto-package-install }
+
+\msg_new:Vnnn \c__autopkg_name_str { luatex-only } {
+    The~ ``auto-package-install~package''~ requires~ LuaTeX.
+} {
+    Please~ use~ LuaLaTeX~ to~ compile~ documents~ using~ this~ package.
+}
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%% Implementation %%%
+%%%%%%%%%%%%%%%%%%%%%%
+
+%% Load the Lua module
+\sys_if_engine_luatex:TF {
+    \lua_load_module:V \c__autopkg_name_str
+} {
+    \msg_critical:Vn \c__autopkg_name_str { luatex-only }
+}
+
+%% Enable the callbacks
+\__autopkg_enable:
