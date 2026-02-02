@@ -1,0 +1,5 @@
+BasedOnStyle: google
+ColumnLimit: 80
+IndentWidth: 4
+AlignAfterOpenBracket: BlockIndent
+BinPackParameters: false
