@@ -4,8 +4,8 @@
      SPDX-FileCopyrightText: 2026 Max Chernoff
 -->
 
-`texlive-auto-package-install`
-==============================
+`network-install`
+=================
 
 A package that automatically installs missing TeX Live packages during
 compilation.

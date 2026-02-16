@@ -16,14 +16,14 @@
 \usemodule[scite]
 
 % Abbreviations
-\def\pkg/{\sans{texlive-auto-package-install}}
-\def\Pkg/{\sans{Texlive-auto-package-install}}
+\def\pkg/{\sans{network-install}}
+\def\Pkg/{\sans{network-install}}
 \useURL[projecturl][https://github.com/gucci-on-fleek/texlive-auto-package-install]
 \let\q=\quotation
 
 
 \startdocument[
-    title=texlive-auto-package-install,
+    title=network-install,
     author=Max Chernoff,
     version=0.0.0, %%version
     github=https://github.com/gucci-on-fleek/texlive-auto-package-install,
@@ -35,7 +35,7 @@ packages from \TeX{}~Live when compiling documents.
 \section{Quick Start}
 
 \startTEX
-\RequirePackage{auto-package-install}
+\RequirePackage{network-install}
 \documentclass{article}
 
 \begin{document}
@@ -61,7 +61,7 @@ After installing only \typ{scheme-basic}, the following file compiles
 without any errors:
 
 \startTEX
-\RequirePackage{auto-package-install}
+\RequirePackage{network-install}
 \documentclass{article}
 
 \usepackage{amsmath}
