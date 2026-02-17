@@ -291,8 +291,8 @@ function netinst.get_url(url, range)
         local start_byte, stop_byte = content_range:match("^bytes (%d+)%-(%d+)/")
         start_byte, stop_byte = tonumber(start_byte), tonumber(stop_byte)
 
-        if  ((not range[1]) or (start_byte == range[1]    )) and
-            ((not range[2]) or (stop_byte  == range[2] - 1))
+        if  ((not range[1]) or (start_byte == range[1])) and
+            ((not range[2]) or (stop_byte  == range[2]))
         then
             netinst._utils.debug(
                 "Received expected byte range: %s", content_range
