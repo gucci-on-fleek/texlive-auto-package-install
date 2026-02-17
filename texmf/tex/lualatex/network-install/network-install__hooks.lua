@@ -1,1 +1,1 @@
-../../../../source/network-install__hooks.lua
+../../../../source/tex/network-install__hooks.lua
