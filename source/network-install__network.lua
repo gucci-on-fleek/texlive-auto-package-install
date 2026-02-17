@@ -306,8 +306,5 @@ function netinst.get_url(url, range)
         end
     end
 
-    -- Cleanup
-    pcall(curl.curl_easy_cleanup, request_handle)
-
     return headers, body_data
 end
