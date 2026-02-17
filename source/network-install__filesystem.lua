@@ -7,9 +7,9 @@
 --- Initialization ---
 ----------------------
 
+-- Make sure that the main package file is loaded first
 assert(
     netinst._currently_loading_subpackage,
     "This file cannot be loaded directly."
 )
-
-netinst._utils.info("``filesystem'' subpackage loaded.")
+netinst._utils.debug("filesystem subpackage loaded")
