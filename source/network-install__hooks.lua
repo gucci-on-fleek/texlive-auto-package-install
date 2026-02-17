@@ -183,7 +183,7 @@ for name, func in pairs(callbacks) do
     luatexbase.add_to_callback(
         name,
         func,
-        ("%s.%s"):format(netinst._package_name, name)
+        ("%s.%s"):format(netinst._utils.pkg_name, name)
     )
 end
 
