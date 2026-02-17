@@ -15,6 +15,7 @@
 *#
 build/*
 documentation/lwc-manual.mkxl
+release.title
 temp*
 
 !texmf/**
