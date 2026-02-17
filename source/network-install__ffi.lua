@@ -13,7 +13,7 @@
 
 -- Make sure that the main package file is loaded first
 assert(
-    netinst._currently_loading_subpackage,
+    netinst._currently_loading_subpackages,
     "This file cannot be loaded directly."
 )
 netinst._utils.debug("ffi subpackage loaded")
