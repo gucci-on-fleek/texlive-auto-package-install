@@ -31,9 +31,9 @@
 %%% Constants %%%
 %%%%%%%%%%%%%%%%%
 
-\str_const:Nn \c__netinstall_name_str { network-install }
+\str_const:Nn \c__netinst_name_str { network-install }
 
-\msg_new:Vnnn \c__netinstall_name_str { luatex-only } {
+\msg_new:Vnnn \c__netinst_name_str { luatex-only } {
     The~ ``network-install~package''~ requires~ LuaTeX.
 } {
     Please~ use~ LuaLaTeX~ to~ compile~ documents~ using~ this~ package.
@@ -45,8 +45,8 @@
 
 %% Load the Lua module
 \sys_if_engine_luatex:TF {
-    \lua_load_module:V \c__netinstall_name_str
+    \lua_load_module:V \c__netinst_name_str
 } {
-    \msg_critical:Vn \c__netinstall_name_str { luatex-only }
+    \msg_critical:Vn \c__netinst_name_str { luatex-only }
 }
 
