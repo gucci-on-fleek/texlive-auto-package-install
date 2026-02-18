@@ -1,0 +1,117 @@
+# texlive-auto-package-install
+# https://github.com/gucci-on-fleek/texlive-auto-package-install
+# SPDX-License-Identifier: MPL-2.0+
+# SPDX-FileCopyrightText: 2026 Max Chernoff
+
+################
+### Metadata ###
+################
+
+[project]
+# Basic metadata
+classifiers = ["Private :: Do Not Upload"]
+requires-python = ">=3.11"
+
+######################
+### Build Settings ###
+######################
+
+[tool.uv]
+# Restrict to my computer
+environments = ["""
+    sys_platform == 'linux' and platform_machine == 'x86_64'
+"""]
+
+# Only use binary packages (wheels); this ensures that no untrusted code is run
+# during installation.
+no-build = true
+
+
+##############################
+### Formatting and Linting ###
+##############################
+
+[tool.ruff]
+# Shorter line lengths are more readable
+line-length = 80
+
+# Automatically fix formatting and linting issues
+fix = true
+
+# Enable experimental features
+preview = true
+
+[tool.ruff.lint]
+
+# Add the following lint rule categories to the default set
+extend-select = [
+    "ANN", # flake8-annotations
+    "ASYNC", # flake8-async
+    "D", # pydocstyle
+    "DOC", # pydoclint
+    "I", # isort
+    "ISC", # flake8-implicit-str-concat
+    "NPY", # numpy
+    "PL", # pylint
+    "PT", # flake8-pytest-style
+    "PTH", # flake8-use-pathlib
+    "T20", # flake8-print
+    "UP", # pyupgrade
+]
+
+# Ignore the following rules
+extend-ignore = [
+    "ANN002", # missing type annotation for args
+    "ANN003", # missing type annotation for kwargs
+    "ANN401", # Dynamically typed expressions are disallowed
+    "D105", # Missing docstring in magic method
+    "D202", # No blank lines allowed after function docstring
+    "DOC501", # Raised exception missing from docstring
+    "F821", # undefined name
+    "PLC0415", # import should be at the top-level of a file
+    "PLR0912", # too many branches
+]
+
+# Don't fix unused imports, since it's really annoying to have them disappear
+# while you're trying to add them.
+unfixable = ["F401"]
+
+# `pprint` is useful to have for debugging, so make sure that it's always
+# present, even if unused.
+[tool.ruff.lint.pyflakes]
+allowed-unused-imports = ["pprint"]
+
+[tool.ruff.lint.isort]
+required-imports = ["from pprint import pp as pprint"]
+lines-after-imports = 2
+
+# Combine all imports from the same module into a single line
+combine-as-imports = true
+
+
+#####################
+### Type Checking ###
+#####################
+
+[tool.pyright]
+# Make the Pyright type checker stricter
+typeCheckingMode = "strict"
+deprecateTypingAliases = true
+reportUnnecessaryTypeIgnoreComment = true
+
+# But not _too_ strict
+reportUnusedImport = false
+reportPrivateUsage = false
+reportMissingTypeStubs = false
+
+
+##############################
+### Documentation Settings ###
+##############################
+
+# Docstring style
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pydoclint]
+ignore-one-line-docstrings = true
