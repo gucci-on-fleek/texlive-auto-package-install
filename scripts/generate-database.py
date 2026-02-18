@@ -323,6 +323,12 @@ def create_zip(
         ),
     )
 
+    # Delete the zip file first to make sure that we're starting from scratch.
+    try:
+        output_file.unlink()
+    except FileNotFoundError:
+        pass
+
     with ZipFile(
         output_file,
         "w",
@@ -394,11 +400,11 @@ def run(
     # Extract the filelists
     ctan_files = filelist_from_ctan(ctan)
     tlpdb_files = filelist_from_tlpdb(tlpdb)
+    ctan_missing = get_missing_ctan_files(tlpdb_files, ctan_files)
 
     if generate_zip:
         msg("Generating zip file...")
         # Get the list of files in TL but not in CTAN
-        ctan_missing = get_missing_ctan_files(tlpdb_files, ctan_files)
 
         # Generate the zip file containing the missing files
         output_directory.mkdir(parents=True, exist_ok=True)
@@ -412,8 +418,12 @@ def run(
             f"Finished generating zip file. {len(ctan_missing)} files were included."
         )
 
-    # if generate_database:
-    #     msg("Generating database...")
+    if generate_database:
+        if not generate_zip:
+            raise NotImplementedError(
+                "Generating the database without generating the zip file is not supported since the database would be incomplete."
+            )
+        msg("Generating database...")
 
 
 ####################
