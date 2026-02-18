@@ -20,6 +20,7 @@ from sys import exit, stderr
 from time import time
 from typing import Literal, NamedTuple
 from urllib.request import urlopen
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 ########################
@@ -60,6 +61,8 @@ IGNORE_PREFIXES = {"lwarp"}
 START_TIME = time()
 TLPDB_PATH = "/systems/texlive/tlnet/tlpkg/texlive.tlpdb.xz"
 TLPDB_REVISION_REGEX = re_compile(r"^revision (\d+)\s*$", MULTILINE)
+ZIP_NAME = "network-install.files.zip"
+ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 TLPDB_FILE_REGEX = re_compile(
     r"""
@@ -297,6 +300,77 @@ def get_missing_ctan_files(
     return out
 
 
+def create_zip(
+    output_file: Path, texmf_dist: Path, files: set[FileEntry]
+) -> None:
+    """Create a zip file containing the specified files.
+
+    Args:
+        output_file: The path to the output zip file.
+        texmf_dist: The path to the texmf-dist directory on the local filesystem.
+        files: The set of FileEntry objects representing the files to include in the zip file.
+    """
+
+    # Sort the files to ensure deterministic output. We'll sort first by the
+    # revision and then by the full path so that newer files are placed later
+    # in the zip file, which should reduce the number of bytes changed with
+    # every update.
+    sorted_files = sorted(
+        files,
+        key=lambda entry: (
+            entry.revision if entry.revision is not None else -1,
+            entry.path,
+        ),
+    )
+
+    with ZipFile(
+        output_file,
+        "w",
+        compression=ZIP_DEFLATED,
+        allowZip64=False,
+        compresslevel=9,
+    ) as zip_file:
+        for file in sorted_files:
+            # Create a ZipInfo object for this file. We're avoiding using the
+            # ZipFile.write() method since it doesn't allow us to specify the
+            # date of the file.
+            zip_info = ZipInfo(
+                filename=file.filename,
+                # Set the date of the file to a fixed value to ensure
+                # deterministic output. We'll use the ZIP epoch, which is the
+                # earliest date that can be represented in a zip file.
+                date_time=ZIP_EPOCH,
+            )
+
+            # Set the file permissions to 444 (r--r--r--) to ensure
+            # deterministic output and to make sure that the files are read-only
+            # when extracted.
+            zip_info.external_attr = 0o444 << 16
+
+            # Python sets the create_system attribute depending on the operating
+            # system, but this causes non-deterministic output since the same
+            # file will have different create_system values on different
+            # operating systems. To avoid this, we'll just set it to a fixed
+            # value that works on all operating systems. The value 3 corresponds
+            # to Unix.
+            zip_info.create_system = 3
+
+            # Now, write the file to the zip file using the ZipInfo object and
+            # the contents of the file.
+            try:
+                with (texmf_dist / file.path).open("rb") as f:
+                    zip_file.writestr(
+                        zip_info,
+                        f.read(),
+                        compress_type=ZIP_DEFLATED,
+                        compresslevel=9,
+                    )
+            except IsADirectoryError:
+                # If the file is a directory, just skip it since we only care
+                # about files.
+                continue
+
+
 def run(
     output_directory: Path,
     mirror_url: str,
@@ -325,7 +399,18 @@ def run(
         msg("Generating zip file...")
         # Get the list of files in TL but not in CTAN
         ctan_missing = get_missing_ctan_files(tlpdb_files, ctan_files)
-        pprint(ctan_missing)
+
+        # Generate the zip file containing the missing files
+        output_directory.mkdir(parents=True, exist_ok=True)
+        create_zip(
+            output_file=output_directory / ZIP_NAME,
+            texmf_dist=texmf_dist,
+            files=ctan_missing,
+        )
+
+        msg(
+            f"Finished generating zip file. {len(ctan_missing)} files were included."
+        )
 
     # if generate_database:
     #     msg("Generating database...")
