@@ -65,6 +65,7 @@ netinst._utils.debug("Using libcurl version %s", version_string)
 --------------------
 
 --- Sets the options on a libcurl handle
+---
 --- @param handle userdata The libcurl handle to set options on
 --- @param options table<string, boolean|integer|string|userdata>
 ---     A table of options to set, where the keys are the option names (without

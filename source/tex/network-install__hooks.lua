@@ -55,6 +55,7 @@ local string_catcodes = token.create("c_str_cctab").mode
 netinst.hooks = {}
 
 --- The default function that will be called before TeX searches for a file.
+---
 --- @type hook_function
 --- @param asked_name string
 ---     The name of the file that TeX is looking for, as given in the TeX
@@ -71,6 +72,7 @@ function netinst.hooks.before(asked_name, found_path)
 end
 
 --- The default function that will be called after TeX searches for a file.
+---
 --- @type hook_function
 --- @param asked_name string
 ---     The name of the file that TeX is looking for, as given in the TeX
@@ -92,6 +94,7 @@ function netinst.hooks.after(asked_name, found_path)
 end
 
 --- Runs a hook function.
+---
 --- @param asked_name string
 ---     The name of the file that TeX is looking for, as given in the TeX
 ---     source.
@@ -114,6 +117,7 @@ local function run_hook(asked_name, default)
 end
 
 --- A wrapper function for hooks, using an arbitrary function.
+---
 --- @param default hook_function
 ---     The default function called to look up this file.
 ---
@@ -126,6 +130,7 @@ local function hook_wrapper_function(default)
 end
 
 --- A wrapper function for hooks, using kpathsea.
+---
 --- @param file_type KpseFtype The file type to search for
 --- @return fun(asked_name: string):(found_name: string|nil)
 ---     A function that takes the asked name and returns the found name.
@@ -194,7 +199,7 @@ end
 
 --- Overwrite the luaotfload font file finding callback function to use our own
 --- resolver
---- comment
+---
 --- @param asked_name string
 --- @return string|nil path
 ---     The path to the font file, or `nil` if it could not be found

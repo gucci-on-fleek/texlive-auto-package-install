@@ -84,6 +84,7 @@ local message_printers = {
 }
 
 --- Converts an arbitrary message to a string
+---
 --- @param message string|any The message to convert
 --- @param ... any Additional arguments to format the message with
 --- @return string
@@ -112,6 +113,7 @@ local function format_message(message, ...)
 end
 
 --- Define a message function wrapper that checks the log level before printing
+---
 --- @param level log_level
 --- @return fun(message: string, ...: any)
 local function message_wrapper(level)
@@ -192,6 +194,7 @@ end
 local cleanup_functions = {}
 
 --- A function to register a cleanup function to be run on exit
+---
 --- @generic T
 --- @param func fun(T) The function to run on exit
 --- @param arg? `T` An optional argument to pass to the function

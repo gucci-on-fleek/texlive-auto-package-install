@@ -23,7 +23,7 @@ netinst._utils.debug("filesystem subpackage loaded")
 --- Constants ---
 -----------------
 
-local database_filename = "network-install.files.lut.gz"
+local database_filename = "network-install.files.lut"
 local ctan_mirror_filename = "network-install.ctan_mirror.txt"
 local local_file_template = string.formatters["%s/%s.%6i"]
 local item_separator = netinst._utils.os_case {
@@ -79,6 +79,7 @@ local cache_root do
 end
 
 --- Gets the path to a local file in the cache.
+---
 --- @param filename string
 ---     The name of the file to get, without any path components. This must not
 ---     contain a "/" character.

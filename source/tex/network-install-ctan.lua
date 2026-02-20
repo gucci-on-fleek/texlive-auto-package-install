@@ -22,6 +22,7 @@ netinst._utils.debug("ctan subpackage loaded")
 -----------------
 
 local mirror_redirector = "https://mirrors.ctan.org/"
+local self_metafiles_base = "https://www.maxchernoff.ca/files/"
 
 
 ----------------------
@@ -109,26 +110,37 @@ local mirror_url do
     netinst._utils.debug("Using CTAN mirror: %s", mirror_url)
 end
 
---- Downloads a file from CTAN.
---- @param path string The path to the file on CTAN, relative to the mirror URL.
+--- Downloads a file from a base URL.
+---
+--- @param url_base string
+---     The base URL to download from. This must end with a slash and begin with
+---     "https://".
+---
+--- @param path string The path to the file, relative to the base URL.
 --- @param range range? An optional byte range to download.
 --- @return string data The contents of the file.
-function netinst.ctan_get(path, range)
-    -- Fix the URL
+local function download_from_base_and_path(url_base, path, range)
+    -- Fix and validate the path and base
     if path:match("^/") then
         path = path:sub(2)
     end
-    local url = mirror_url .. path
 
-    -- Make sure that there's nothing weird in the URL
-    if url:match("%.%.") or url:match("//") then
+    if not url_base:match("/$") or not url_base:match("^https://") then
         netinst._utils.error(
-            "Invalid CTAN path: %s. Path must not contain '..' or '//' sequences.",
+            "Invalid base URL: %s.",
+            url_base
+        )
+    end
+
+    if path:match("%.%.") or path:match("//") or url_base:match("%.%.") then
+        netinst._utils.error(
+            "Invalid path: %s. Path must not contain '..' or '//' sequences.",
             path
         )
     end
 
     -- Download the file
+    local url = url_base .. path
     local headers, body, status = netinst.get_url(url, range)
 
     if (not range) and (status == 200) then
@@ -137,11 +149,32 @@ function netinst.ctan_get(path, range)
         -- Ok
     else
         netinst._utils.error(
-            "Failed to download file from CTAN: %s. HTTP status code: %d",
+            "Failed to download file: %s. HTTP status code: %d",
             url,
             status
         )
     end
 
     return body
+end
+
+--- Downloads a file from CTAN.
+---
+--- @param path string The path to the file on CTAN, relative to the mirror URL.
+--- @param range range? An optional byte range to download.
+--- @return string data The contents of the file.
+function netinst.ctan_get(path, range)
+    return download_from_base_and_path(mirror_url, path, range)
+end
+
+--- Downloads a metafile from the author's server.
+---
+--- This function will eventually be replaced with `netinst.ctan_get`, but since
+--- the metafiles have not yet been uploaded to CTAN, this is necessary for now.
+---
+--- @param path string The path to the metafile, relative to the base URL.
+--- @param range range? An optional byte range to download.
+--- @return string data The contents of the metafile.
+function netinst._get_metafile(path, range)
+    return download_from_base_and_path(self_metafiles_base, path, range)
 end
