@@ -222,7 +222,7 @@ end, netinst._utils.pkg_name .. ".cleanup")
 -- Set a flag to indicate that we're loading the subpackages
 netinst._currently_loading_subpackages = true
 
--- Load the subpackages
+-- Load the internal subpackages
 require(pkg_name .. "__ffi")
 require(pkg_name .. "__network")
 require(pkg_name .. "__filesystem")

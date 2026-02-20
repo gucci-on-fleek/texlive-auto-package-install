@@ -103,6 +103,7 @@ reportUnnecessaryTypeIgnoreComment = true
 reportUnusedImport = false
 reportPrivateUsage = false
 reportMissingTypeStubs = false
+reportUnnecessaryIsInstance = false
 
 
 ##############################

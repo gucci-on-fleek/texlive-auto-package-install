@@ -3,12 +3,16 @@
 -- SPDX-License-Identifier: MPL-2.0+
 -- SPDX-FileCopyrightText: 2026 Max Chernoff
 
---- This subpackage contains the network-related functions for the package.
---- Although LuaTeX has the built-in `socket` library, it doesn't support HTTPS,
---- which is required to securely download packages from CTAN. Instead, we use
---- the Lua FFI module to interface with the libcurl C library, which provides
---- robust support for HTTPS and support for persistent connections, which can
---- speed up multiple package downloads.
+--- This subpackage contains the low-level network-related functions for the
+--- package. Although LuaTeX has the built-in `socket` library, it doesn't
+--- support HTTPS, which is required to securely download packages from CTAN.
+--- Instead, we use the Lua FFI module to interface with the libcurl C library,
+--- which provides robust support for HTTPS and support for persistent
+--- connections, which can speed up multiple package downloads.
+---
+--- Note that this subpackage only contains the core code required to make HTTP
+--- requests; the higher-level logic for downloading packages and handling errors
+--- is in other subpackages.
 
 ----------------------
 --- Initialization ---

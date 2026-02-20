@@ -6,6 +6,10 @@
 --- This subpackage loads the required C-based shared objects/dynamic libraries
 --- using the Lua FFI module. These libraries are then used by the other
 --- subpackages.
+---
+--- Since the Lua FFI module is not available on all platforms, eventually
+--- this subpackage will (probably) be rewritten in C and statically linked
+--- into the LuaTeX engine executable.
 
 ----------------------
 --- Initialization ---
