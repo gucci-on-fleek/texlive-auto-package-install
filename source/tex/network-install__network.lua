@@ -330,5 +330,5 @@ function netinst.get_url(url, range)
         end
     end
 
-    return headers, body_data, status_code_ptr[0]
+    return headers, body_data, status_code
 end

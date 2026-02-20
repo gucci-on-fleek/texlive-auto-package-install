@@ -67,7 +67,7 @@ local mirror_url do
     -- Otherwise, choose a mirror and save it for next time
     else
         -- Fetch the URL
-        local header, body, status = netinst.get_url(mirror_redirector)
+        local headers, body, status = netinst.get_url(mirror_redirector)
         if (status < 300) or (status >= 400) then
             netinst._utils.error(
                 "Failed to get CTAN mirror URL from redirector: %s. HTTP status code: %d",
@@ -76,7 +76,7 @@ local mirror_url do
             )
         end
 
-        local location = header.location
+        local location = headers.location
         if not location then
             netinst._utils.error(
                 "Failed to get CTAN mirror URL from redirector: %s. No Location header found.",
@@ -107,4 +107,41 @@ local mirror_url do
     end
 
     netinst._utils.debug("Using CTAN mirror: %s", mirror_url)
+end
+
+--- Downloads a file from CTAN.
+--- @param path string The path to the file on CTAN, relative to the mirror URL.
+--- @param range range? An optional byte range to download.
+--- @return string data The contents of the file.
+function netinst.ctan_get(path, range)
+    -- Fix the URL
+    if path:match("^/") then
+        path = path:sub(2)
+    end
+    local url = mirror_url .. path
+
+    -- Make sure that there's nothing weird in the URL
+    if url:match("%.%.") or url:match("//") then
+        netinst._utils.error(
+            "Invalid CTAN path: %s. Path must not contain '..' or '//' sequences.",
+            path
+        )
+    end
+
+    -- Download the file
+    local headers, body, status = netinst.get_url(url, range)
+
+    if (not range) and (status == 200) then
+        -- Ok
+    elseif range and (status == 206) then
+        -- Ok
+    else
+        netinst._utils.error(
+            "Failed to download file from CTAN: %s. HTTP status code: %d",
+            url,
+            status
+        )
+    end
+
+    return body
 end
