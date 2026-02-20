@@ -24,6 +24,7 @@ netinst._utils.debug("filesystem subpackage loaded")
 -----------------
 
 local database_filename = "network-install.files.lut.gz"
+local ctan_mirror_filename = "network-install.ctan_mirror.txt"
 local local_file_template = string.formatters["%s/%s.%6i"]
 local item_separator = netinst._utils.os_case {
     windows = ";",
@@ -127,4 +128,12 @@ function netinst.get_local_database_path()
     else
         return path, false
     end
+end
+
+--- Gets the path to the CTAN mirror file. (Private)
+--- @return string path The path to the CTAN mirror file.
+--- @return boolean exists Whether the CTAN mirror file exists.
+function netinst._get_ctan_mirror_file_path()
+    local path = ("%s/%s"):format(cache_root, ctan_mirror_filename)
+    return path, io.exists(path)
 end

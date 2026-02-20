@@ -234,6 +234,7 @@ set_options(handle, {
 ---
 --- @return table<string, string> headers A dictionary of the response headers
 --- @return string data The response body
+--- @return integer status_code The HTTP status code of the response
 function netinst.get_url(url, range)
     -- Log the start of the request
     netinst._utils.debug("Starting request to %s", url)
@@ -280,6 +281,25 @@ function netinst.get_url(url, range)
     local header_data = table.concat(callback_data.header)
     local body_data = table.concat(callback_data.body)
 
+    -- Get the HTTP status code
+    local status_code_ptr = ffi.new("long[1]")
+    local ok = curl.curl_easy_getinfo(
+        request_handle, curl.CURLINFO_RESPONSE_CODE, status_code_ptr
+    )
+    local status_code --- @type integer
+    if ok ~= curl.CURLE_OK then
+        netinst._utils.error(
+            "Failed to get HTTP status code from libcurl response: %s",
+            ffi.string(curl.curl_easy_strerror(ok))
+        )
+    else
+        status_code = tonumber(status_code_ptr[0]) --[[@as integer]]
+        netinst._utils.debug(
+            "Received HTTP status code %d from %s",
+            status_code, url
+        )
+    end
+
     -- Process the response headers
     local headers = {}
     for _, line in ipairs(header_data:split("\r\n") or {}) do
@@ -310,5 +330,5 @@ function netinst.get_url(url, range)
         end
     end
 
-    return headers, body_data
+    return headers, body_data, status_code_ptr[0]
 end
