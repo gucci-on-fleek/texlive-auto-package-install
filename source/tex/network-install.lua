@@ -231,6 +231,11 @@ require(pkg_name .. "__hooks")
 -- Clear the flag
 netinst._currently_loading_subpackages = nil
 
+-- Load the public-ish higher-level-ish subpackages
+require(pkg_name .. "-ctan")
+require(pkg_name .. "-database")
+require(pkg_name .. "-files")
+
 -- Return the exports
 netinst._utils.debug("Loading complete")
 return netinst
