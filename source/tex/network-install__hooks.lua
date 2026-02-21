@@ -232,12 +232,27 @@ function fonts.names.lookup_font_file(asked_name)
     end
 end
 
--- Add an additional Lua package searcher
+-- Add additional Lua package searchers
+insert(package.searchers, 1, function(module_name)
+    local filename = module_name .. ".lua"
+    local path = netinst.hooks.before(filename, nil)
+    if not path then
+        return ("\n\tno TeX Live package found for %s"):format(module_name)
+    end
+
+    local func, err = loadfile(path)
+    if not func then
+        return ("\n\terror loading TeX Live package %s: %s"):format(
+            module_name, tostring(err)
+        )
+    end
+
+    return func
+end)
+
 insert(package.searchers, function(module_name)
-    local path = run_hook(
-        module_name .. ".lua",
-        function(name) return nil end
-    )
+    local filename = module_name .. ".lua"
+    local path = netinst.hooks.after(filename, nil)
     if not path then
         return ("\n\tno TeX Live package found for %s"):format(module_name)
     end
