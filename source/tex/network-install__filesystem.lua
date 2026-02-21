@@ -111,9 +111,9 @@ end
 ---     The path to the local database file in the cache, regardless of whether
 ---     it exists or not.
 ---
---- @return integer|false last_modified
----     The last modified time of the local database file as a Unix timestamp,
----     or `false` if the file does not exist.
+--- @return integer last_modified
+---     The last modified time of the local database file as a Unix timestamp
+---     in seconds, or 0 if the file does not exist.
 ---
 function netinst.get_local_database_path()
     local path = ("%s/%s"):format(cache_root, database_filename)
@@ -127,7 +127,7 @@ function netinst.get_local_database_path()
         end
         return path, modified
     else
-        return path, false
+        return path, 0
     end
 end
 

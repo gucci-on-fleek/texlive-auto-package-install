@@ -219,9 +219,9 @@ set_options(handle, {
 --- Public Functions ---
 ------------------------
 
---- @class (exact) range
---- @field [1] integer? The starting byte index of the range (inclusive)
---- @field [2] integer? The ending byte index of the range (inclusive)
+--- @alias range [integer?, integer?]
+---     [1]: The starting byte index of the range (inclusive)
+---     [2]: The ending byte index of the range (inclusive)
 
 --- Downloads the content of a URL and returns the response headers and body.
 ---
@@ -268,8 +268,9 @@ function netinst.get_url(url, range)
 
     -- Make the request
     local ok = curl.curl_easy_perform(request_handle)
-    pcall(curl.curl_easy_cleanup, request_handle)
     if ok ~= curl.CURLE_OK then
+        pcall(curl.curl_easy_cleanup, request_handle)
+        request_handle = nil
         netinst._utils.error(
             "Failed to perform libcurl request: %s",
             ffi.string(curl.curl_easy_strerror(ok))
@@ -283,10 +284,16 @@ function netinst.get_url(url, range)
     local body_data = table.concat(callback_data.body)
 
     -- Get the HTTP status code
-    local status_code_ptr = ffi.new("long[1]")
+    local status_code_ptr = ffi.new("long[1]", 0)
     local ok = curl.curl_easy_getinfo(
         request_handle, curl.CURLINFO_RESPONSE_CODE, status_code_ptr
     )
+
+    -- Free the request handle right away since we don't need it anymore
+    pcall(curl.curl_easy_cleanup, request_handle)
+    request_handle = nil
+
+    -- Check the status code
     local status_code --- @type integer
     if ok ~= curl.CURLE_OK then
         netinst._utils.error(
@@ -297,6 +304,13 @@ function netinst.get_url(url, range)
         status_code = tonumber(status_code_ptr[0]) --[[@as integer]]
         netinst._utils.debug(
             "Received HTTP status code %d from %s",
+            status_code, url
+        )
+    end
+
+    if status_code <= 0 or status_code >= 1000 then
+        netinst._utils.error(
+            "Received invalid HTTP status code %d from %s",
             status_code, url
         )
     end
