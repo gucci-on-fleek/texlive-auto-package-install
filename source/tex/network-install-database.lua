@@ -23,7 +23,9 @@ netinst._utils.debug("database subpackage loaded")
 -----------------
 
 local remote_database_path = "network-install.files.lut.gz"
+local zip_file_path = "network-install.files.zip"
 local days_to_seconds = 24 * 60 * 60
+local zip_window_bits = -15
 
 --- lualibs overwrites the original `load` function, but it saves it as
 --- `loadstring`, so we'll just use that directly. But then LuaLS doesn't like
@@ -69,8 +71,10 @@ local allowed_functions = {
 ---
 --- @param event "call" | "return" | "line" | "count" | "tail call"
 ---     The type of the event that triggered the hook.
+---
 --- @param line? integer
 ---     The current line of code being executed, if the event is "line".
+---
 --- @return nil
 local function deny_all_functions(event, line)
     if event == "call" or event == "tail call" then
@@ -141,7 +145,7 @@ end
 ------------------------
 
 --- The main database mapping filenames to their sources and paths.
---- @type table<string, database_entry>
+--- @type database
 local database do
     local database_path, last_modified = netinst.get_local_database_path()
     local yesterday = os.time() - days_to_seconds
@@ -193,5 +197,79 @@ local database do
                 database_path
             )
         end
+    end
+end
+
+
+---------------------
+--- File Handling ---
+---------------------
+
+--- Gets the latest revision number of a file in the database.
+---
+--- @param filename string
+---     The name of the file to check, without any path components.
+---
+--- @return integer|nil revision
+---     The latest revision number of the file in the database, or `nil` if the
+---     file is not found in the database.
+function netinst.get_latest_file_revision(filename)
+    local entry = database[filename]
+    if not entry then
+        return nil
+    end
+    return entry.revision
+end
+
+--- Downloads and extracts a file from a .zip archive.
+---
+--- @param offset range The byte offset of the file in the ZIP archive.
+--- @return string data The decompressed contents of the file.
+local function download_from_zip(offset)
+    -- Download the range of bytes from the zip file
+    local compressed = netinst._get_metafile(zip_file_path, offset)
+
+    -- Decompress the downloaded range
+    local data = zlib.decompress(compressed, zip_window_bits)
+    if not data then
+        netinst._utils.error(
+            "Failed to decompress file from ZIP archive at offset %d.",
+            offset
+        )
+    end
+    return data
+end
+
+--- Downloads the latest version of a file from CTAN.
+---
+--- @param filename string
+---     The name of the file to download, without any path components.
+---
+--- @return string data The contents of the file.
+function netinst.download_file(filename)
+    -- Verify that the file exists
+    local entry = database[filename]
+    if not entry then
+        netinst._utils.error(
+            "File not found in database: %s",
+            filename
+        )
+    end
+
+    -- If the file is available unpacked on CTAN, we can just download it
+    -- directly.
+    if entry.source == "ctan" then
+        --- @cast entry database_entry.ctan
+        return netinst.ctan_get(entry.path)
+
+    -- Otherwise, we'll need to extract it from the .zip archive.
+    elseif entry.source == "zip" then
+        --- @cast entry database_entry.zip
+        return download_from_zip(entry.offset)
+    else
+        netinst._utils.error(
+            "Invalid source for file %s: %s",
+            filename, entry.source
+        )
     end
 end

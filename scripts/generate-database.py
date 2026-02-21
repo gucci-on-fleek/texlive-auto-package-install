@@ -158,6 +158,23 @@ CTAN_FILE_REGEX = re_compile(
     VERBOSE | MULTILINE,
 )
 
+CTAN_IGNORE_REGEX = re_compile(
+    r"""
+        ^(?:
+            # The latex-dev files are always going to be duplicates of files in
+            # the main archive, so we need to ignore them to avoid accidental
+            # duplications.
+            macros/latex-dev |
+
+            # These files are automatically synced from
+            # modules.contextgarden.net, so there can be duplicate files here
+            # too.
+            macros/context/contrib
+        ) /
+    """,
+    VERBOSE | MULTILINE,
+)
+
 
 #########################################
 ### General-Purpose Utility Functions ###
@@ -293,8 +310,8 @@ def filelist_from_ctan(
         date_str = file_match.group("date")
         date = int(date_str.replace("/", ""))
 
-        # Special case: exclude the latex-dev files
-        if path.startswith("macros/latex-dev/"):
+        # Special cases: exclude certain files
+        if CTAN_IGNORE_REGEX.match(path):
             continue
 
         # Add the file entry to the filelist

@@ -219,7 +219,7 @@ set_options(handle, {
 --- Public Functions ---
 ------------------------
 
---- @alias range [integer?, integer?]
+--- @alias range [integer, integer]
 ---     [1]: The starting byte index of the range (inclusive)
 ---     [2]: The ending byte index of the range (inclusive)
 

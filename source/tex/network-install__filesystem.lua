@@ -107,6 +107,7 @@ function netinst.get_local_file_path(filename, revision)
 end
 
 --- Gets the path to the local database file in the cache.
+---
 --- @return string path
 ---     The path to the local database file in the cache, regardless of whether
 ---     it exists or not.
@@ -132,6 +133,7 @@ function netinst.get_local_database_path()
 end
 
 --- Gets the path to the CTAN mirror file. (Private)
+---
 --- @return string path The path to the CTAN mirror file.
 --- @return boolean exists Whether the CTAN mirror file exists.
 function netinst._get_ctan_mirror_file_path()
