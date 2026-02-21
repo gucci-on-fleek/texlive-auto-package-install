@@ -226,6 +226,11 @@ end
 --- @param offset range The byte offset of the file in the ZIP archive.
 --- @return string data The decompressed contents of the file.
 local function download_from_zip(offset)
+    netinst._utils.debug(
+        "Downloading file from ZIP archive at offset %d-%d.",
+        offset[1], offset[2]
+    )
+
     -- Download the range of bytes from the zip file
     local compressed = netinst._get_metafile(zip_file_path, offset)
 
@@ -240,13 +245,14 @@ local function download_from_zip(offset)
     return data
 end
 
---- Downloads the latest version of a file from CTAN.
+--- Downloads the latest version of a file from CTAN, using the path from the
+--- database.
 ---
 --- @param filename string
 ---     The name of the file to download, without any path components.
 ---
 --- @return string data The contents of the file.
-function netinst.download_file(filename)
+function netinst.download_from_database(filename)
     -- Verify that the file exists
     local entry = database[filename]
     if not entry then

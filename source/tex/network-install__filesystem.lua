@@ -25,7 +25,7 @@ netinst._utils.debug("filesystem subpackage loaded")
 
 local database_filename = "network-install.files.lut"
 local ctan_mirror_filename = "network-install.ctan_mirror.txt"
-local local_file_template = string.formatters["%s/%s.%6i"]
+local local_file_template = string.formatters["%s/%s.%06i"]
 local item_separator = netinst._utils.os_case {
     windows = ";",
     default = ":"
