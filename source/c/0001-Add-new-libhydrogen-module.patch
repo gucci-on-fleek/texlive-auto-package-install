@@ -1,0 +1,3303 @@
+From ef1367b2aff94c33f1e171c1569b43536a62139e Mon Sep 17 00:00:00 2001
+From: Max Chernoff <tex@maxchernoff.ca>
+Date: Wed, 18 Feb 2026 18:53:48 -0700
+Subject: [PATCH] Add new "libhydrogen" module
+
+---
+ manual/luatex-lua.tex                         | 184 ++++++++-
+ source/texk/web2c/Makefile.in                 | 174 +++++---
+ source/texk/web2c/luatexdir/am/libluatex.am   |   1 +
+ .../texk/web2c/luatexdir/libhydrogen/LICENSE  |  18 +
+ .../luatexdir/libhydrogen/README-luatex.txt   |  36 ++
+ .../web2c/luatexdir/libhydrogen/README.md     |  38 ++
+ .../texk/web2c/luatexdir/libhydrogen/common.h | 334 +++++++++++++++
+ .../texk/web2c/luatexdir/libhydrogen/core.h   | 221 ++++++++++
+ .../web2c/luatexdir/libhydrogen/gimli-core.h  |  25 ++
+ .../libhydrogen/gimli-core/portable.h         |  39 ++
+ .../luatexdir/libhydrogen/gimli-core/sse2.h   | 112 +++++
+ .../texk/web2c/luatexdir/libhydrogen/hash.h   | 142 +++++++
+ .../web2c/luatexdir/libhydrogen/hydrogen.c    |  28 ++
+ .../web2c/luatexdir/libhydrogen/hydrogen.h    | 337 +++++++++++++++
+ .../web2c/luatexdir/libhydrogen/hydrogen_p.h  |  82 ++++
+ .../texk/web2c/luatexdir/libhydrogen/random.h | 157 +++++++
+ .../web2c/luatexdir/libhydrogen/random/unix.h |  85 ++++
+ .../web2c/luatexdir/libhydrogen/random/wasi.h |  12 +
+ .../luatexdir/libhydrogen/random/windows.h    |  20 +
+ .../texk/web2c/luatexdir/libhydrogen/sign.h   | 207 ++++++++++
+ .../texk/web2c/luatexdir/libhydrogen/x25519.h | 386 ++++++++++++++++++
+ .../texk/web2c/luatexdir/lua/lhydrogenlib.c   | 327 +++++++++++++++
+ source/texk/web2c/luatexdir/lua/luastuff.c    |   1 +
+ source/texk/web2c/luatexdir/lua/luatex-api.h  |   2 +
+ 24 files changed, 2901 insertions(+), 67 deletions(-)
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/LICENSE
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/README-luatex.txt
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/README.md
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/common.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/core.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/gimli-core.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/gimli-core/portable.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/gimli-core/sse2.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/hash.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/hydrogen.c
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/hydrogen.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/hydrogen_p.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/random.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/random/unix.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/random/wasi.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/random/windows.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/sign.h
+ create mode 100644 source/texk/web2c/luatexdir/libhydrogen/x25519.h
+ create mode 100644 source/texk/web2c/luatexdir/lua/lhydrogenlib.c
+
+diff --git a/manual/luatex-lua.tex b/manual/luatex-lua.tex
+index ac8446447..2c6a476bb 100644
+--- a/manual/luatex-lua.tex
++++ b/manual/luatex-lua.tex
+@@ -203,7 +203,7 @@ in the following order:
+    Also from version 1.18.0 and if  \KPATHSEA\ is used, the functions
+    \type{os.rename},\type{os.remove}, \type{lfs.attributes}, \type{lfs.chdir},
+    \type{lfs.lock_dir}, \type{lfs.dir}, \type{lfs.link}, \type{lfs.mkdir}, \type{lfs.mkdirp},
+-   \type{lfs.rmdir}, \type{lfs.symlinkattributes}, \type{lfs.touch} 
++   \type{lfs.rmdir}, \type{lfs.symlinkattributes}, \type{lfs.touch}
+    return \type{true} if both \type{kpse.in_name_ok_silent_extended} and
+    \type{kpse.out_name_ok_silent_extended} validate the pathname;
+    \type{lfs.attributes}, \type{lfs.dir} and  \type{lfs.symlinkattributes} are validated
+@@ -224,7 +224,7 @@ in the following order:
+     \stoptyping
+ 
+     The \type {--nosocket} or \type {--no-socket} option makes the socket library
+-    unavailable, so that \LUA\ cannot use networking;  
++    unavailable, so that \LUA\ cannot use networking;
+     \type {--socket} option makes the socket library available.
+ 
+     The switches \type {--[no-]shell-escape}, \type {--[enable|disable]-write18}, and
+@@ -803,6 +803,186 @@ Some modules that are normally external to \LUA\ are statically linked in with
+ 
+ \stopitemize
+ 
++\startsection[title={Cryptography with \type {libhydrogen}}]
++
++\topicindex {libhydrogen}
++
++There are no pure-\LUA\ libraries implementing elliptic curve signatures, so
++\LUATEX\ includes the \type {libhydrogen} library, by Frank Denis,
++\hyphenatedurl {https://libhydrogen.org/}. Only the signature, hashing, and
++random number generation functions are included.
++
++In general, most functions have the signature
++
++\startfunctioncall
++<string> out =
++    libhydrogen.<function>(<string> message, <string> key,
++        <options>...[, <string> context])
++\stopfunctioncall
++
++where \type {context} is an optional 8-byte string describing the context of the
++operation. For futher details, refer to the upstream documentation of \type
++{libhydrogen}.
++
++\startsubsection[title={Public key signatures}]
++
++\startsubsubsection[title={\type {sign_keygen}}]
++
++\libindex {sign_keygen}
++
++\startfunctioncall
++<string> public_key, <string> secret_key =
++    libhydrogen.sign_keygen()
++\stopfunctioncall
++
++Generates a new public and secret key pair for signing. The public key is 32
++bytes long, is used for signature verification, and can be shared publicly. The
++secret key is 64 bytes long, is used for signing messages, and must be kept
++secret.
++
++\stopsubsubsection
++
++\startsubsubsection[title={\type {sign_create}}]
++
++\libindex {sign_create}
++
++\startfunctioncall
++<string> signature = 
++    libhydrogen.sign_create(<string> message, <string> secret_key
++        [, <string> context])
++\stopfunctioncall
++
++Generates a signature for the given message using the provided secret key. The
++signature is 64 bytes long. Only the holder of the secret key can create valid
++signatures for messages. This function is randomized, so signing the same
++message multiple times will yield different signatures.
++
++If you use a context here, you must also use the same context when verifying the
++signature.
++
++\stopsubsubsection
++
++\startsubsubsection[title={\type {sign_verify}}]
++
++\libindex {sign_verify}
++
++\startfunctioncall
++<boolean> is_valid = 
++    libhydrogen.sign_verify(<string> message, <string> signature,
++        <string> public_key [, <string> context])
++\stopfunctioncall
++
++Verifies that the provided signature is valid for the given message and public
++key. Returns \type {true} if the signature is valid, and \type {false}
++otherwise.
++
++\stopsubsubsection
++
++\stopsubsection
++
++\startsubsection[title={Hashing}]
++
++\startsubsubsection[title={\type {hash}}]
++
++\libindex {hash}
++
++\startfunctioncall
++    <string> result = 
++        libhydrogen.hash(<string> message[, <integer> length_bytes
++            [, <string> context]])
++\stopfunctioncall
++
++Generates a hash of the given message. When using identical arguments, this
++function will always return the same hash. The default length of the hash result
++is 32 bytes (256 bits), but you can specify any length between 16 and 65535
++bytes. The input message can be of any length. To provide a context, you must
++also provide a length.
++
++Internally, this function uses the KMAC construction with the Gimli permutation.
++
++\stopsubsubsection
++
++\startsubsubsection[title={\type {hash_keygen}}]
++
++\libindex {hash_keygen}
++
++\startfunctioncall
++<string> secret_key = libhydrogen.hash_keygen()
++\stopfunctioncall
++
++Generates a secret key suitable for use with the \type {hash_keyed} function.
++The secret key is 32 bytes long and must be kept secret.
++
++\stopsubsubsection
++
++\startsubsubsection[title={\type {hash_keyed}}]
++
++\libindex {hash_keyed}
++
++\startfunctioncall
++<string> result = 
++    libhydrogen.hash_keyed(<string> message, <string> secret_key
++        [, <integer> length_bytes [, <string> context]])
++\stopfunctioncall
++
++The same as \type {hash}, but with the addition of a secret key. Only someone
++with the secret key can generate the same hash result for a given message.
++However, unlike the signature functions, the secret key must be shared with
++anyone who needs to verify the hash.
++
++This function provides similar properties as an HMAC.
++
++\stopsubsubsection
++
++\stopsubsection
++
++\startsubsection[title={Random number generation}]
++
++\LUA's built-in random number generator (\type {math.random}) is sufficient for
++most purposes, but it is not cryptographically secure, and therefore should
++never be used for cryptographic purposes. The following functions \emph {are}
++cryptographically secure, and can be used for generating random keys, nonces,
++salts, etc.
++
++If you are generating secret keys for use with the signature and hashing
++functions, you should instead use the \type{_keygen} functions provided.
++
++\startsubsubsection[title={\type {random_bytes}}]
++
++\libindex {random_bytes}
++
++\startfunctioncall
++<string> data = 
++    libhydrogen.random_bytes(<integer> length_bytes)
++\stopfunctioncall
++
++This function returns a string of the specified length containing random bytes.
++The random bytes are generated using a cryptographically secure random number
++generator, and the length must be between 1 byte and 128 mebibytes.
++
++\stopsubsubsection
++
++\startsubsubsection[title={\type {random_integer}}]
++
++\libindex {random_integer}
++
++\startfunctioncall
++<integer> value = 
++    libhydrogen.random_integer(<integer> minimum, <integer> maximum)
++\stopfunctioncall
++
++This function returns a random integer between (inclusive) the specified minimum
++and maximum values. The random integer is generated using a cryptographically
++secure random number generator. The minimum and maximum values must be between $-2^{63} - 1$
++and $2^{63} - 1$, and the difference between them must be less than $2^{32} -
++1$.
++
++\stopsubsubsection
++
++\stopsubsection
++
++\stopsection
++
+ \stopsection
+ 
+ \startsection[title={Testing}]
+diff --git a/source/texk/web2c/Makefile.in b/source/texk/web2c/Makefile.in
+index 1119aa167..9164c00a9 100644
+--- a/source/texk/web2c/Makefile.in
++++ b/source/texk/web2c/Makefile.in
+@@ -698,6 +698,7 @@ am__objects_8 = luatexdir/luafontloader/src/libluajittex_a-ffdummies.$(OBJEXT) \
+ 	luatexdir/lua/libluajittex_a-ltexiolib.$(OBJEXT) \
+ 	luatexdir/lua/libluajittex_a-ltexlib.$(OBJEXT) \
+ 	luatexdir/lua/libluajittex_a-lnewtokenlib.$(OBJEXT) \
++	luatexdir/lua/libluajittex_a-lhydrogenlib.$(OBJEXT) \
+ 	luatexdir/lua/libluajittex_a-luatex-core.$(OBJEXT) \
+ 	luatexdir/lua/libluajittex_a-helpers.$(OBJEXT) \
+ 	luatexdir/lua/libluajittex_a-luanode.$(OBJEXT) \
+@@ -869,6 +870,7 @@ am__objects_13 =  \
+ 	luatexdir/lua/libluatex_a-ltexiolib.$(OBJEXT) \
+ 	luatexdir/lua/libluatex_a-ltexlib.$(OBJEXT) \
+ 	luatexdir/lua/libluatex_a-lnewtokenlib.$(OBJEXT) \
++	luatexdir/lua/libluatex_a-lhydrogenlib.$(OBJEXT) \
+ 	luatexdir/lua/libluatex_a-luatex-core.$(OBJEXT) \
+ 	luatexdir/lua/libluatex_a-helpers.$(OBJEXT) \
+ 	luatexdir/lua/libluatex_a-luanode.$(OBJEXT) \
+@@ -1907,6 +1909,7 @@ am__depfiles_remade = ./$(DEPDIR)/aleph-aleph-pool.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluajittex_a-helpers.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluajittex_a-lcallbacklib.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluajittex_a-lfontlib.Po \
++	luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluajittex_a-limglib.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluajittex_a-liolibext.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluajittex_a-lkpselib.Po \
+@@ -1932,6 +1935,7 @@ am__depfiles_remade = ./$(DEPDIR)/aleph-aleph-pool.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluatex_a-helpers.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluatex_a-lcallbacklib.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluatex_a-lfontlib.Po \
++	luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluatex_a-limglib.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluatex_a-liolibext.Po \
+ 	luatexdir/lua/$(DEPDIR)/libluatex_a-lkpselib.Po \
+@@ -5133,71 +5137,71 @@ dist_libluatex_sources = luatexdir/luatexcallbackids.h \
+ 	luatexdir/lua/liolibext.c luatexdir/lua/loslibext.c \
+ 	luatexdir/lua/lpdflib.c luatexdir/lua/lstatslib.c \
+ 	luatexdir/lua/ltexiolib.c luatexdir/lua/ltexlib.c \
+-	luatexdir/lua/lnewtokenlib.c luatexdir/lua/luatex-core.c \
+-	luatexdir/lua/helpers.c luatexdir/lua/luanode.c \
+-	luatexdir/lua/luatoken.c luatexdir/lua/mplibstuff.c \
+-	luatexdir/pdf/pdfpagetree.h luatexdir/pdf/pdfaction.h \
+-	luatexdir/pdf/pdfannot.h luatexdir/pdf/pdfcolorstack.h \
+-	luatexdir/pdf/pdfdest.h luatexdir/pdf/pdffont.h \
+-	luatexdir/pdf/pdfgen.h luatexdir/pdf/pdfglyph.h \
+-	luatexdir/pdf/pdfimage.h luatexdir/pdf/pdflink.h \
+-	luatexdir/pdf/pdflistout.h luatexdir/pdf/pdfliteral.h \
+-	luatexdir/pdf/pdfobj.h luatexdir/pdf/pdfoutline.h \
+-	luatexdir/pdf/pdfpage.h luatexdir/pdf/pdfrule.h \
+-	luatexdir/pdf/pdfsaverestore.h luatexdir/pdf/pdfsetmatrix.h \
+-	luatexdir/pdf/pdfshipout.h luatexdir/pdf/pdftables.h \
+-	luatexdir/pdf/pdfthread.h luatexdir/pdf/pdftypes.h \
+-	luatexdir/pdf/pdfxform.h luatexdir/pdf/pdfaction.c \
+-	luatexdir/pdf/pdfannot.c luatexdir/pdf/pdfcolorstack.c \
+-	luatexdir/pdf/pdfdest.c luatexdir/pdf/pdffont.c \
+-	luatexdir/pdf/pdfgen.c luatexdir/pdf/pdfglyph.c \
+-	luatexdir/pdf/pdfimage.c luatexdir/pdf/pdflink.c \
+-	luatexdir/pdf/pdflistout.c luatexdir/pdf/pdfliteral.c \
+-	luatexdir/pdf/pdfobj.c luatexdir/pdf/pdfoutline.c \
+-	luatexdir/pdf/pdfpage.c luatexdir/pdf/pdfpagetree.c \
+-	luatexdir/pdf/pdfrule.c luatexdir/pdf/pdfsaverestore.c \
+-	luatexdir/pdf/pdfsetmatrix.c luatexdir/pdf/pdfshipout.c \
+-	luatexdir/pdf/pdftables.c luatexdir/pdf/pdfthread.c \
+-	luatexdir/pdf/pdfxform.c luatexdir/tex/align.h \
+-	luatexdir/tex/arithmetic.h luatexdir/tex/backend.h \
+-	luatexdir/tex/backend.c luatexdir/tex/buildpage.h \
+-	luatexdir/tex/commands.h luatexdir/tex/conditional.h \
+-	luatexdir/tex/directions.h luatexdir/tex/dumpdata.h \
+-	luatexdir/tex/equivalents.h luatexdir/tex/errors.h \
+-	luatexdir/tex/expand.h luatexdir/tex/extensions.h \
+-	luatexdir/tex/filename.h luatexdir/tex/inputstack.h \
+-	luatexdir/tex/linebreak.h luatexdir/tex/mainbody.h \
+-	luatexdir/tex/maincontrol.h luatexdir/tex/mathcodes.h \
+-	luatexdir/tex/memoryword.h luatexdir/tex/mlist.h \
+-	luatexdir/tex/nesting.h luatexdir/tex/packaging.h \
+-	luatexdir/tex/postlinebreak.h luatexdir/tex/primitive.h \
+-	luatexdir/tex/printing.h luatexdir/tex/scanning.h \
+-	luatexdir/tex/stringpool.h luatexdir/tex/texdeffont.h \
+-	luatexdir/tex/texfileio.h luatexdir/tex/texmath.h \
+-	luatexdir/tex/texnodes.h luatexdir/tex/textcodes.h \
+-	luatexdir/tex/textoken.h luatexdir/tex/align.c \
+-	luatexdir/tex/arithmetic.c luatexdir/tex/buildpage.c \
+-	luatexdir/tex/commands.c luatexdir/tex/conditional.c \
+-	luatexdir/tex/directions.c luatexdir/tex/dumpdata.c \
+-	luatexdir/tex/equivalents.c luatexdir/tex/errors.c \
+-	luatexdir/tex/expand.c luatexdir/tex/extensions.c \
+-	luatexdir/tex/filename.c luatexdir/tex/inputstack.c \
+-	luatexdir/tex/linebreak.c luatexdir/tex/mainbody.c \
+-	luatexdir/tex/maincontrol.c luatexdir/tex/mathcodes.c \
+-	luatexdir/tex/memoryword.c luatexdir/tex/mlist.c \
+-	luatexdir/tex/nesting.c luatexdir/tex/packaging.c \
+-	luatexdir/tex/postlinebreak.c luatexdir/tex/primitive.c \
+-	luatexdir/tex/scanning.c luatexdir/tex/stringpool.c \
+-	luatexdir/tex/texdeffont.c luatexdir/tex/texfileio.c \
+-	luatexdir/tex/texmath.c luatexdir/tex/texnodes.c \
+-	luatexdir/tex/textcodes.c luatexdir/tex/textoken.c \
+-	luatexdir/utils/avl.c luatexdir/utils/avl.h \
+-	luatexdir/utils/avlstuff.h luatexdir/utils/managed-sa.h \
+-	luatexdir/utils/utils.h luatexdir/utils/unistring.h \
+-	luatexdir/utils/avlstuff.c luatexdir/utils/managed-sa.c \
+-	luatexdir/utils/unistring.c synctexdir/synctex-common.h \
+-	synctexdir/synctex-luatex.h synctexdir/synctex.c \
+-	synctexdir/synctex.h
++	luatexdir/lua/lnewtokenlib.c luatexdir/lua/lhydrogenlib.c \
++	luatexdir/lua/luatex-core.c luatexdir/lua/helpers.c \
++	luatexdir/lua/luanode.c luatexdir/lua/luatoken.c \
++	luatexdir/lua/mplibstuff.c luatexdir/pdf/pdfpagetree.h \
++	luatexdir/pdf/pdfaction.h luatexdir/pdf/pdfannot.h \
++	luatexdir/pdf/pdfcolorstack.h luatexdir/pdf/pdfdest.h \
++	luatexdir/pdf/pdffont.h luatexdir/pdf/pdfgen.h \
++	luatexdir/pdf/pdfglyph.h luatexdir/pdf/pdfimage.h \
++	luatexdir/pdf/pdflink.h luatexdir/pdf/pdflistout.h \
++	luatexdir/pdf/pdfliteral.h luatexdir/pdf/pdfobj.h \
++	luatexdir/pdf/pdfoutline.h luatexdir/pdf/pdfpage.h \
++	luatexdir/pdf/pdfrule.h luatexdir/pdf/pdfsaverestore.h \
++	luatexdir/pdf/pdfsetmatrix.h luatexdir/pdf/pdfshipout.h \
++	luatexdir/pdf/pdftables.h luatexdir/pdf/pdfthread.h \
++	luatexdir/pdf/pdftypes.h luatexdir/pdf/pdfxform.h \
++	luatexdir/pdf/pdfaction.c luatexdir/pdf/pdfannot.c \
++	luatexdir/pdf/pdfcolorstack.c luatexdir/pdf/pdfdest.c \
++	luatexdir/pdf/pdffont.c luatexdir/pdf/pdfgen.c \
++	luatexdir/pdf/pdfglyph.c luatexdir/pdf/pdfimage.c \
++	luatexdir/pdf/pdflink.c luatexdir/pdf/pdflistout.c \
++	luatexdir/pdf/pdfliteral.c luatexdir/pdf/pdfobj.c \
++	luatexdir/pdf/pdfoutline.c luatexdir/pdf/pdfpage.c \
++	luatexdir/pdf/pdfpagetree.c luatexdir/pdf/pdfrule.c \
++	luatexdir/pdf/pdfsaverestore.c luatexdir/pdf/pdfsetmatrix.c \
++	luatexdir/pdf/pdfshipout.c luatexdir/pdf/pdftables.c \
++	luatexdir/pdf/pdfthread.c luatexdir/pdf/pdfxform.c \
++	luatexdir/tex/align.h luatexdir/tex/arithmetic.h \
++	luatexdir/tex/backend.h luatexdir/tex/backend.c \
++	luatexdir/tex/buildpage.h luatexdir/tex/commands.h \
++	luatexdir/tex/conditional.h luatexdir/tex/directions.h \
++	luatexdir/tex/dumpdata.h luatexdir/tex/equivalents.h \
++	luatexdir/tex/errors.h luatexdir/tex/expand.h \
++	luatexdir/tex/extensions.h luatexdir/tex/filename.h \
++	luatexdir/tex/inputstack.h luatexdir/tex/linebreak.h \
++	luatexdir/tex/mainbody.h luatexdir/tex/maincontrol.h \
++	luatexdir/tex/mathcodes.h luatexdir/tex/memoryword.h \
++	luatexdir/tex/mlist.h luatexdir/tex/nesting.h \
++	luatexdir/tex/packaging.h luatexdir/tex/postlinebreak.h \
++	luatexdir/tex/primitive.h luatexdir/tex/printing.h \
++	luatexdir/tex/scanning.h luatexdir/tex/stringpool.h \
++	luatexdir/tex/texdeffont.h luatexdir/tex/texfileio.h \
++	luatexdir/tex/texmath.h luatexdir/tex/texnodes.h \
++	luatexdir/tex/textcodes.h luatexdir/tex/textoken.h \
++	luatexdir/tex/align.c luatexdir/tex/arithmetic.c \
++	luatexdir/tex/buildpage.c luatexdir/tex/commands.c \
++	luatexdir/tex/conditional.c luatexdir/tex/directions.c \
++	luatexdir/tex/dumpdata.c luatexdir/tex/equivalents.c \
++	luatexdir/tex/errors.c luatexdir/tex/expand.c \
++	luatexdir/tex/extensions.c luatexdir/tex/filename.c \
++	luatexdir/tex/inputstack.c luatexdir/tex/linebreak.c \
++	luatexdir/tex/mainbody.c luatexdir/tex/maincontrol.c \
++	luatexdir/tex/mathcodes.c luatexdir/tex/memoryword.c \
++	luatexdir/tex/mlist.c luatexdir/tex/nesting.c \
++	luatexdir/tex/packaging.c luatexdir/tex/postlinebreak.c \
++	luatexdir/tex/primitive.c luatexdir/tex/scanning.c \
++	luatexdir/tex/stringpool.c luatexdir/tex/texdeffont.c \
++	luatexdir/tex/texfileio.c luatexdir/tex/texmath.c \
++	luatexdir/tex/texnodes.c luatexdir/tex/textcodes.c \
++	luatexdir/tex/textoken.c luatexdir/utils/avl.c \
++	luatexdir/utils/avl.h luatexdir/utils/avlstuff.h \
++	luatexdir/utils/managed-sa.h luatexdir/utils/utils.h \
++	luatexdir/utils/unistring.h luatexdir/utils/avlstuff.c \
++	luatexdir/utils/managed-sa.c luatexdir/utils/unistring.c \
++	synctexdir/synctex-common.h synctexdir/synctex-luatex.h \
++	synctexdir/synctex.c synctexdir/synctex.h
+ luatex_dvi_ctangle = $(ctangle_silent)CWEBINPUTS=$(srcdir)/luatexdir/dvi $(ctangle)
+ luatex_font_ctangle = $(ctangle_silent)CWEBINPUTS=$(srcdir)/luatexdir/font $(ctangle)
+ luatex_image_ctangle = $(ctangle_silent)CWEBINPUTS=$(srcdir)/luatexdir/image $(ctangle)
+@@ -6495,6 +6499,9 @@ luatexdir/lua/libluajittex_a-ltexlib.$(OBJEXT):  \
+ luatexdir/lua/libluajittex_a-lnewtokenlib.$(OBJEXT):  \
+ 	luatexdir/lua/$(am__dirstamp) \
+ 	luatexdir/lua/$(DEPDIR)/$(am__dirstamp)
++luatexdir/lua/libluajittex_a-lhydrogenlib.$(OBJEXT):  \
++	luatexdir/lua/$(am__dirstamp) \
++	luatexdir/lua/$(DEPDIR)/$(am__dirstamp)
+ luatexdir/lua/libluajittex_a-luatex-core.$(OBJEXT):  \
+ 	luatexdir/lua/$(am__dirstamp) \
+ 	luatexdir/lua/$(DEPDIR)/$(am__dirstamp)
+@@ -6968,6 +6975,9 @@ luatexdir/lua/libluatex_a-ltexlib.$(OBJEXT):  \
+ luatexdir/lua/libluatex_a-lnewtokenlib.$(OBJEXT):  \
+ 	luatexdir/lua/$(am__dirstamp) \
+ 	luatexdir/lua/$(DEPDIR)/$(am__dirstamp)
++luatexdir/lua/libluatex_a-lhydrogenlib.$(OBJEXT):  \
++	luatexdir/lua/$(am__dirstamp) \
++	luatexdir/lua/$(DEPDIR)/$(am__dirstamp)
+ luatexdir/lua/libluatex_a-luatex-core.$(OBJEXT):  \
+ 	luatexdir/lua/$(am__dirstamp) \
+ 	luatexdir/lua/$(DEPDIR)/$(am__dirstamp)
+@@ -8768,6 +8778,7 @@ distclean-compile:
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-helpers.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-lcallbacklib.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-lfontlib.Po@am__quote@ # am--include-marker
++@AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-limglib.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-liolibext.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluajittex_a-lkpselib.Po@am__quote@ # am--include-marker
+@@ -8793,6 +8804,7 @@ distclean-compile:
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-helpers.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-lcallbacklib.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-lfontlib.Po@am__quote@ # am--include-marker
++@AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-limglib.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-liolibext.Po@am__quote@ # am--include-marker
+ @AMDEP_TRUE@@am__include@ @am__quote@luatexdir/lua/$(DEPDIR)/libluatex_a-lkpselib.Po@am__quote@ # am--include-marker
+@@ -11573,6 +11585,20 @@ luatexdir/lua/libluajittex_a-lnewtokenlib.obj: luatexdir/lua/lnewtokenlib.c
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluajittex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o luatexdir/lua/libluajittex_a-lnewtokenlib.obj `if test -f 'luatexdir/lua/lnewtokenlib.c'; then $(CYGPATH_W) 'luatexdir/lua/lnewtokenlib.c'; else $(CYGPATH_W) '$(srcdir)/luatexdir/lua/lnewtokenlib.c'; fi`
+ 
++luatexdir/lua/libluajittex_a-lhydrogenlib.o: luatexdir/lua/lhydrogenlib.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluajittex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT luatexdir/lua/libluajittex_a-lhydrogenlib.o -MD -MP -MF luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Tpo -c -o luatexdir/lua/libluajittex_a-lhydrogenlib.o `test -f 'luatexdir/lua/lhydrogenlib.c' || echo '$(srcdir)/'`luatexdir/lua/lhydrogenlib.c
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Tpo luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='luatexdir/lua/lhydrogenlib.c' object='luatexdir/lua/libluajittex_a-lhydrogenlib.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluajittex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o luatexdir/lua/libluajittex_a-lhydrogenlib.o `test -f 'luatexdir/lua/lhydrogenlib.c' || echo '$(srcdir)/'`luatexdir/lua/lhydrogenlib.c
++
++luatexdir/lua/libluajittex_a-lhydrogenlib.obj: luatexdir/lua/lhydrogenlib.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluajittex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT luatexdir/lua/libluajittex_a-lhydrogenlib.obj -MD -MP -MF luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Tpo -c -o luatexdir/lua/libluajittex_a-lhydrogenlib.obj `if test -f 'luatexdir/lua/lhydrogenlib.c'; then $(CYGPATH_W) 'luatexdir/lua/lhydrogenlib.c'; else $(CYGPATH_W) '$(srcdir)/luatexdir/lua/lhydrogenlib.c'; fi`
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Tpo luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='luatexdir/lua/lhydrogenlib.c' object='luatexdir/lua/libluajittex_a-lhydrogenlib.obj' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluajittex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o luatexdir/lua/libluajittex_a-lhydrogenlib.obj `if test -f 'luatexdir/lua/lhydrogenlib.c'; then $(CYGPATH_W) 'luatexdir/lua/lhydrogenlib.c'; else $(CYGPATH_W) '$(srcdir)/luatexdir/lua/lhydrogenlib.c'; fi`
++
+ luatexdir/lua/libluajittex_a-luatex-core.o: luatexdir/lua/luatex-core.c
+ @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluajittex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT luatexdir/lua/libluajittex_a-luatex-core.o -MD -MP -MF luatexdir/lua/$(DEPDIR)/libluajittex_a-luatex-core.Tpo -c -o luatexdir/lua/libluajittex_a-luatex-core.o `test -f 'luatexdir/lua/luatex-core.c' || echo '$(srcdir)/'`luatexdir/lua/luatex-core.c
+ @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) luatexdir/lua/$(DEPDIR)/libluajittex_a-luatex-core.Tpo luatexdir/lua/$(DEPDIR)/libluajittex_a-luatex-core.Po
+@@ -13575,6 +13601,20 @@ luatexdir/lua/libluatex_a-lnewtokenlib.obj: luatexdir/lua/lnewtokenlib.c
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluatex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o luatexdir/lua/libluatex_a-lnewtokenlib.obj `if test -f 'luatexdir/lua/lnewtokenlib.c'; then $(CYGPATH_W) 'luatexdir/lua/lnewtokenlib.c'; else $(CYGPATH_W) '$(srcdir)/luatexdir/lua/lnewtokenlib.c'; fi`
+ 
++luatexdir/lua/libluatex_a-lhydrogenlib.o: luatexdir/lua/lhydrogenlib.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluatex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT luatexdir/lua/libluatex_a-lhydrogenlib.o -MD -MP -MF luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Tpo -c -o luatexdir/lua/libluatex_a-lhydrogenlib.o `test -f 'luatexdir/lua/lhydrogenlib.c' || echo '$(srcdir)/'`luatexdir/lua/lhydrogenlib.c
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Tpo luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='luatexdir/lua/lhydrogenlib.c' object='luatexdir/lua/libluatex_a-lhydrogenlib.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluatex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o luatexdir/lua/libluatex_a-lhydrogenlib.o `test -f 'luatexdir/lua/lhydrogenlib.c' || echo '$(srcdir)/'`luatexdir/lua/lhydrogenlib.c
++
++luatexdir/lua/libluatex_a-lhydrogenlib.obj: luatexdir/lua/lhydrogenlib.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluatex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT luatexdir/lua/libluatex_a-lhydrogenlib.obj -MD -MP -MF luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Tpo -c -o luatexdir/lua/libluatex_a-lhydrogenlib.obj `if test -f 'luatexdir/lua/lhydrogenlib.c'; then $(CYGPATH_W) 'luatexdir/lua/lhydrogenlib.c'; else $(CYGPATH_W) '$(srcdir)/luatexdir/lua/lhydrogenlib.c'; fi`
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Tpo luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='luatexdir/lua/lhydrogenlib.c' object='luatexdir/lua/libluatex_a-lhydrogenlib.obj' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluatex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o luatexdir/lua/libluatex_a-lhydrogenlib.obj `if test -f 'luatexdir/lua/lhydrogenlib.c'; then $(CYGPATH_W) 'luatexdir/lua/lhydrogenlib.c'; else $(CYGPATH_W) '$(srcdir)/luatexdir/lua/lhydrogenlib.c'; fi`
++
+ luatexdir/lua/libluatex_a-luatex-core.o: luatexdir/lua/luatex-core.c
+ @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libluatex_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT luatexdir/lua/libluatex_a-luatex-core.o -MD -MP -MF luatexdir/lua/$(DEPDIR)/libluatex_a-luatex-core.Tpo -c -o luatexdir/lua/libluatex_a-luatex-core.o `test -f 'luatexdir/lua/luatex-core.c' || echo '$(srcdir)/'`luatexdir/lua/luatex-core.c
+ @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) luatexdir/lua/$(DEPDIR)/libluatex_a-luatex-core.Tpo luatexdir/lua/$(DEPDIR)/libluatex_a-luatex-core.Po
+@@ -20110,6 +20150,7 @@ distclean: distclean-recursive
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-helpers.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lcallbacklib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lfontlib.Po
++	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-limglib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-liolibext.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lkpselib.Po
+@@ -20135,6 +20176,7 @@ distclean: distclean-recursive
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-helpers.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lcallbacklib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lfontlib.Po
++	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-limglib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-liolibext.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lkpselib.Po
+@@ -20889,6 +20931,7 @@ maintainer-clean: maintainer-clean-recursive
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-helpers.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lcallbacklib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lfontlib.Po
++	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lhydrogenlib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-limglib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-liolibext.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluajittex_a-lkpselib.Po
+@@ -20914,6 +20957,7 @@ maintainer-clean: maintainer-clean-recursive
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-helpers.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lcallbacklib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lfontlib.Po
++	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lhydrogenlib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-limglib.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-liolibext.Po
+ 	-rm -f luatexdir/lua/$(DEPDIR)/libluatex_a-lkpselib.Po
+diff --git a/source/texk/web2c/luatexdir/am/libluatex.am b/source/texk/web2c/luatexdir/am/libluatex.am
+index 4741540a2..891714226 100644
+--- a/source/texk/web2c/luatexdir/am/libluatex.am
++++ b/source/texk/web2c/luatexdir/am/libluatex.am
+@@ -249,6 +249,7 @@ dist_libluatex_sources += \
+ 	luatexdir/lua/ltexiolib.c \
+ 	luatexdir/lua/ltexlib.c \
+ 	luatexdir/lua/lnewtokenlib.c \
++	luatexdir/lua/lhydrogenlib.c \
+ 	luatexdir/lua/luatex-core.c \
+ 	luatexdir/lua/helpers.c \
+ 	luatexdir/lua/luanode.c \
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/LICENSE b/source/texk/web2c/luatexdir/libhydrogen/LICENSE
+new file mode 100644
+index 000000000..0fe3d28c8
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/LICENSE
+@@ -0,0 +1,18 @@
++/*
++ * ISC License
++ *
++ * Copyright (c) 2017-2026
++ * Frank Denis <j at pureftpd dot org>
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ */
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/README-luatex.txt b/source/texk/web2c/luatexdir/libhydrogen/README-luatex.txt
+new file mode 100644
+index 000000000..94fd4e8c6
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/README-luatex.txt
+@@ -0,0 +1,36 @@
++The files in this folder are from
++
++    https://github.com/jedisct1/libhydrogen.git
++    
++at the following commit:
++
++    173f728ee2c627f80fd0322473e16467f259558d Fri Feb 13 15:34:10 2026 +0100
++    Merge pull request #158 from ant9000/pr/fix_impl_random_zephyr
++
++The following files are included unmodified:
++
++    common.h
++    core.h
++    hydrogen_p.h
++    random.h
++    sign.h
++    x25519.h
++    random
++    random/unix.h
++    random/wasi.h
++    random/windows.h
++    hydrogen.h
++    README.md
++    LICENSE
++    hash.h
++    gimli-core.h
++    gimli-core
++    gimli-core/portable.h
++    gimli-core/sse2.h
++    
++And the following files have been modified:
++    
++    README-texlive.txt
++    hydrogen.c
++    
++Any other files in the repository that are not listed here are not included.
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/README.md b/source/texk/web2c/luatexdir/libhydrogen/README.md
+new file mode 100644
+index 000000000..a0312abf6
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/README.md
+@@ -0,0 +1,38 @@
++[![CI](https://github.com/jedisct1/libhydrogen/actions/workflows/ci.yml/badge.svg)](https://github.com/jedisct1/libhydrogen/actions/workflows/ci.yml)
++[![CodeQL scan](https://github.com/jedisct1/libhydrogen/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/jedisct1/libhydrogen/actions/workflows/codeql-analysis.yml)
++[![Financial Contributors on Open Collective](https://opencollective.com/libhydrogen/all/badge.svg?label=financial+contributors)](https://opencollective.com/libhydrogen) [![Coverity Scan Build Status](https://scan.coverity.com/projects/13315/badge.svg)](https://scan.coverity.com/projects/13315)
++[![TrustInSoft CI](https://ci.trust-in-soft.com/projects/jedisct1/libhydrogen.svg?branch=master)](https://ci.trust-in-soft.com/projects/jedisct1/libhydrogen)
++
++![libhydrogen](https://raw.github.com/jedisct1/libhydrogen/master/logo.png)
++==============
++
++The Hydrogen library is a small, easy-to-use, hard-to-misuse cryptographic library.
++
++Features:
++- Consistent high-level API, inspired by libsodium. Instead of low-level primitives, it exposes simple functions to solve common problems that cryptography can solve.
++- 100% built using just two cryptographic building blocks: the [Curve25519](https://cr.yp.to/ecdh.html) elliptic curve, and the [Gimli](https://csrc.nist.gov/CSRC/media/Projects/Lightweight-Cryptography/documents/round-1/spec-doc/gimli-spec.pdf) permutation.
++- Small and easy to audit. Implemented as one tiny file for every set of operation, and adding a single `.c` file to your project is all it takes to use libhydrogen in your project.
++- The whole code is released under a single, very liberal license (ISC).
++- Zero dynamic memory allocations and low stack requirements (median: 32 bytes, max: 128 bytes). This makes it usable in constrained environments such as microcontrollers.
++- Portable: written in standard C99. Supports Linux, *BSD, MacOS, Windows, and the Arduino IDE out of the box.
++- Can generate cryptographically-secure random numbers, even on Arduino boards.
++- Attempts to mitigate the implications of accidental misuse, even on systems with an unreliable PRG and/or no clock.
++
++Non-goals:
++- Having multiple primitives serving the same purpose, even to provide compatibility with other libraries.
++- Networking -- but a simple key exchange API based on the Noise protocol is available, and a STROBE-based transport API will be implemented.
++- Interoperability with other libraries.
++- Replacing libsodium. Libhydrogen tries to keep the number of APIs and the code size down to a minimum.
++
++# [Libhydrogen documentation](https://github.com/jedisct1/libhydrogen/wiki)
++
++The documentation is maintained in the [libhydrogen wiki](https://github.com/jedisct1/libhydrogen/wiki).
++
++The legacy libhydrogen code (leveraging XChaCha20, SipHashX, BLAKE2SX, Curve25519) remains available in the [v0 branch](https://github.com/jedisct1/libhydrogen/tree/v0).
++
++## Contributors
++
++### Code Contributors
++
++This project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)].
++<a href="https://github.com/jedisct1/libhydrogen/graphs/contributors"><img src="https://opencollective.com/libhydrogen/contributors.svg?width=890&button=false" /></a>
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/common.h b/source/texk/web2c/luatexdir/libhydrogen/common.h
+new file mode 100644
+index 000000000..44175d130
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/common.h
+@@ -0,0 +1,334 @@
++#if defined(__linux__) && defined(__KERNEL__)
++#    define TLS           /* Danger: at most one call into hydro_*() at a time */
++#    define CHAR_BIT      8
++#    define abort         BUG
++#    define uint_fast16_t uint16_t
++#    define errno         hydro_errno
++static int errno;
++#else
++#    include <errno.h>
++#    include <limits.h>
++#    include <stdbool.h>
++#    include <stdint.h>
++#    include <stdlib.h>
++#    include <string.h>
++#endif
++
++#if defined (__CHERIOT__)
++static int errno;
++#endif
++
++#if !defined(__unix__) && (defined(__APPLE__) || defined(__linux__))
++#    define __unix__ 1
++#endif
++#ifndef __GNUC__
++#    define __restrict__
++#endif
++
++#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
++    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++#    define NATIVE_BIG_ENDIAN
++#endif
++#ifndef NATIVE_BIG_ENDIAN
++#    ifndef NATIVE_LITTLE_ENDIAN
++#        define NATIVE_LITTLE_ENDIAN
++#    endif
++#endif
++
++#ifndef TLS
++#    if defined(_WIN32) && !defined(__GNUC__)
++#        define TLS __declspec(thread)
++#    elif (defined(__clang__) || defined(__GNUC__)) && defined(__unix__) && !defined(__TINYC__)
++#        define TLS __thread
++#    else
++#        define TLS
++#    endif
++#endif
++
++#ifndef SIZE_MAX
++#    define SIZE_MAX ((size_t) -1)
++#endif
++
++#ifdef __OpenBSD__
++#    define HAVE_EXPLICIT_BZERO 1
++#elif defined(__GLIBC__) && defined(__GLIBC_PREREQ) && defined(_GNU_SOURCE)
++#    if __GLIBC_PREREQ(2, 25)
++#        define HAVE_EXPLICIT_BZERO 1
++#    endif
++#endif
++
++#define COMPILER_ASSERT(X) (void) sizeof(char[(X) ? 1 : -1])
++
++#define ROTL32(x, b) (uint32_t)(((x) << (b)) | ((x) >> (32 - (b))))
++#define ROTL64(x, b) (uint64_t)(((x) << (b)) | ((x) >> (64 - (b))))
++#define ROTR32(x, b) (uint32_t)(((x) >> (b)) | ((x) << (32 - (b))))
++#define ROTR64(x, b) (uint64_t)(((x) >> (b)) | ((x) << (64 - (b))))
++
++#define LOAD64_LE(SRC) load64_le(SRC)
++static inline uint64_t
++load64_le(const uint8_t src[8])
++{
++#ifdef NATIVE_LITTLE_ENDIAN
++    uint64_t w;
++    memcpy(&w, src, sizeof w);
++    return w;
++#else
++    uint64_t w = (uint64_t) src[0];
++    w |= (uint64_t) src[1] << 8;
++    w |= (uint64_t) src[2] << 16;
++    w |= (uint64_t) src[3] << 24;
++    w |= (uint64_t) src[4] << 32;
++    w |= (uint64_t) src[5] << 40;
++    w |= (uint64_t) src[6] << 48;
++    w |= (uint64_t) src[7] << 56;
++    return w;
++#endif
++}
++
++#define STORE64_LE(DST, W) store64_le((DST), (W))
++static inline void
++store64_le(uint8_t dst[8], uint64_t w)
++{
++#ifdef NATIVE_LITTLE_ENDIAN
++    memcpy(dst, &w, sizeof w);
++#else
++    dst[0] = (uint8_t) w;
++    w >>= 8;
++    dst[1] = (uint8_t) w;
++    w >>= 8;
++    dst[2] = (uint8_t) w;
++    w >>= 8;
++    dst[3] = (uint8_t) w;
++    w >>= 8;
++    dst[4] = (uint8_t) w;
++    w >>= 8;
++    dst[5] = (uint8_t) w;
++    w >>= 8;
++    dst[6] = (uint8_t) w;
++    w >>= 8;
++    dst[7] = (uint8_t) w;
++#endif
++}
++
++#define LOAD32_LE(SRC) load32_le(SRC)
++static inline uint32_t
++load32_le(const uint8_t src[4])
++{
++#ifdef NATIVE_LITTLE_ENDIAN
++    uint32_t w;
++    memcpy(&w, src, sizeof w);
++    return w;
++#else
++    uint32_t w = (uint32_t) src[0];
++    w |= (uint32_t) src[1] << 8;
++    w |= (uint32_t) src[2] << 16;
++    w |= (uint32_t) src[3] << 24;
++    return w;
++#endif
++}
++
++#define STORE32_LE(DST, W) store32_le((DST), (W))
++static inline void
++store32_le(uint8_t dst[4], uint32_t w)
++{
++#ifdef NATIVE_LITTLE_ENDIAN
++    memcpy(dst, &w, sizeof w);
++#else
++    dst[0] = (uint8_t) w;
++    w >>= 8;
++    dst[1] = (uint8_t) w;
++    w >>= 8;
++    dst[2] = (uint8_t) w;
++    w >>= 8;
++    dst[3] = (uint8_t) w;
++#endif
++}
++
++#define LOAD16_LE(SRC) load16_le(SRC)
++static inline uint16_t
++load16_le(const uint8_t src[2])
++{
++#ifdef NATIVE_LITTLE_ENDIAN
++    uint16_t w;
++    memcpy(&w, src, sizeof w);
++    return w;
++#else
++    uint16_t w = (uint16_t) src[0];
++    w |= (uint16_t) src[1] << 8;
++    return w;
++#endif
++}
++
++#define STORE16_LE(DST, W) store16_le((DST), (W))
++static inline void
++store16_le(uint8_t dst[2], uint16_t w)
++{
++#ifdef NATIVE_LITTLE_ENDIAN
++    memcpy(dst, &w, sizeof w);
++#else
++    dst[0] = (uint8_t) w;
++    w >>= 8;
++    dst[1] = (uint8_t) w;
++#endif
++}
++
++/* ----- */
++
++#define LOAD64_BE(SRC) load64_be(SRC)
++static inline uint64_t
++load64_be(const uint8_t src[8])
++{
++#ifdef NATIVE_BIG_ENDIAN
++    uint64_t w;
++    memcpy(&w, src, sizeof w);
++    return w;
++#else
++    uint64_t w = (uint64_t) src[7];
++    w |= (uint64_t) src[6] << 8;
++    w |= (uint64_t) src[5] << 16;
++    w |= (uint64_t) src[4] << 24;
++    w |= (uint64_t) src[3] << 32;
++    w |= (uint64_t) src[2] << 40;
++    w |= (uint64_t) src[1] << 48;
++    w |= (uint64_t) src[0] << 56;
++    return w;
++#endif
++}
++
++#define STORE64_BE(DST, W) store64_be((DST), (W))
++static inline void
++store64_be(uint8_t dst[8], uint64_t w)
++{
++#ifdef NATIVE_BIG_ENDIAN
++    memcpy(dst, &w, sizeof w);
++#else
++    dst[7] = (uint8_t) w;
++    w >>= 8;
++    dst[6] = (uint8_t) w;
++    w >>= 8;
++    dst[5] = (uint8_t) w;
++    w >>= 8;
++    dst[4] = (uint8_t) w;
++    w >>= 8;
++    dst[3] = (uint8_t) w;
++    w >>= 8;
++    dst[2] = (uint8_t) w;
++    w >>= 8;
++    dst[1] = (uint8_t) w;
++    w >>= 8;
++    dst[0] = (uint8_t) w;
++#endif
++}
++
++#define LOAD32_BE(SRC) load32_be(SRC)
++static inline uint32_t
++load32_be(const uint8_t src[4])
++{
++#ifdef NATIVE_BIG_ENDIAN
++    uint32_t w;
++    memcpy(&w, src, sizeof w);
++    return w;
++#else
++    uint32_t w = (uint32_t) src[3];
++    w |= (uint32_t) src[2] << 8;
++    w |= (uint32_t) src[1] << 16;
++    w |= (uint32_t) src[0] << 24;
++    return w;
++#endif
++}
++
++#define STORE32_BE(DST, W) store32_be((DST), (W))
++static inline void
++store32_be(uint8_t dst[4], uint32_t w)
++{
++#ifdef NATIVE_BIG_ENDIAN
++    memcpy(dst, &w, sizeof w);
++#else
++    dst[3] = (uint8_t) w;
++    w >>= 8;
++    dst[2] = (uint8_t) w;
++    w >>= 8;
++    dst[1] = (uint8_t) w;
++    w >>= 8;
++    dst[0] = (uint8_t) w;
++#endif
++}
++
++#define LOAD16_BE(SRC) load16_be(SRC)
++static inline uint16_t
++load16_be(const uint8_t src[2])
++{
++#ifdef NATIVE_BIG_ENDIAN
++    uint16_t w;
++    memcpy(&w, src, sizeof w);
++    return w;
++#else
++    uint16_t w = (uint16_t) src[1];
++    w |= (uint16_t) src[0] << 8;
++    return w;
++#endif
++}
++
++#define STORE16_BE(DST, W) store16_be((DST), (W))
++static inline void
++store16_be(uint8_t dst[2], uint16_t w)
++{
++#ifdef NATIVE_BIG_ENDIAN
++    memcpy(dst, &w, sizeof w);
++#else
++    dst[1] = (uint8_t) w;
++    w >>= 8;
++    dst[0] = (uint8_t) w;
++#endif
++}
++
++static inline void
++mem_cpy(void *__restrict__ dst_, const void *__restrict__ src_, size_t n)
++{
++    unsigned char       *dst = (unsigned char *) dst_;
++    const unsigned char *src = (const unsigned char *) src_;
++    size_t               i;
++
++    for (i = 0; i < n; i++) {
++        dst[i] = src[i];
++    }
++}
++
++static inline void
++mem_zero(void *dst_, size_t n)
++{
++    unsigned char *dst = (unsigned char *) dst_;
++    size_t         i;
++
++    for (i = 0; i < n; i++) {
++        dst[i] = 0;
++    }
++}
++
++static inline void
++mem_xor(void *__restrict__ dst_, const void *__restrict__ src_, size_t n)
++{
++    unsigned char       *dst = (unsigned char *) dst_;
++    const unsigned char *src = (const unsigned char *) src_;
++    size_t               i;
++
++    for (i = 0; i < n; i++) {
++        dst[i] ^= src[i];
++    }
++}
++
++static inline void
++mem_xor2(void *__restrict__ dst_, const void *__restrict__ src1_, const void *__restrict__ src2_,
++         size_t n)
++{
++    unsigned char       *dst  = (unsigned char *) dst_;
++    const unsigned char *src1 = (const unsigned char *) src1_;
++    const unsigned char *src2 = (const unsigned char *) src2_;
++    size_t               i;
++
++    for (i = 0; i < n; i++) {
++        dst[i] = src1[i] ^ src2[i];
++    }
++}
++
++static const uint8_t zero[64] = { 0 };
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/core.h b/source/texk/web2c/luatexdir/libhydrogen/core.h
+new file mode 100644
+index 000000000..0498ee5a2
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/core.h
+@@ -0,0 +1,221 @@
++int
++hydro_init(void)
++{
++    hydro_random_ensure_initialized();
++    return 0;
++}
++
++void
++hydro_memzero(void *pnt, size_t len)
++{
++#ifdef HAVE_EXPLICIT_BZERO
++    explicit_bzero(pnt, len);
++#else
++    volatile unsigned char *volatile pnt_ = (volatile unsigned char *volatile) pnt;
++    size_t i                              = (size_t) 0U;
++
++    while (i < len) {
++        pnt_[i++] = 0U;
++    }
++#endif
++}
++
++void
++hydro_increment(uint8_t *n, size_t len)
++{
++    size_t        i;
++    uint_fast16_t c = 1U;
++
++    for (i = 0; i < len; i++) {
++        c += (uint_fast16_t) n[i];
++        n[i] = (uint8_t) c;
++        c >>= 8;
++    }
++}
++
++char *
++hydro_bin2hex(char *hex, size_t hex_maxlen, const uint8_t *bin, size_t bin_len)
++{
++    size_t       i = (size_t) 0U;
++    unsigned int x;
++    int          b;
++    int          c;
++
++    if (bin_len >= SIZE_MAX / 2 || hex_maxlen <= bin_len * 2U) {
++        abort();
++    }
++    while (i < bin_len) {
++        c = bin[i] & 0xf;
++        b = bin[i] >> 4;
++        x = (unsigned char) (87U + c + (((c - 10U) >> 8) & ~38U)) << 8 |
++            (unsigned char) (87U + b + (((b - 10U) >> 8) & ~38U));
++        hex[i * 2U] = (char) x;
++        x >>= 8;
++        hex[i * 2U + 1U] = (char) x;
++        i++;
++    }
++    hex[i * 2U] = 0U;
++
++    return hex;
++}
++
++int
++hydro_hex2bin(uint8_t *bin, size_t bin_maxlen, const char *hex, size_t hex_len, const char *ignore,
++              const char **hex_end_p)
++{
++    size_t        bin_pos = (size_t) 0U;
++    size_t        hex_pos = (size_t) 0U;
++    int           ret     = 0;
++    unsigned char c;
++    unsigned char c_alpha0, c_alpha;
++    unsigned char c_num0, c_num;
++    uint8_t       c_acc = 0U;
++    uint8_t       c_val;
++    unsigned char state = 0U;
++
++    while (hex_pos < hex_len) {
++        c        = (unsigned char) hex[hex_pos];
++        c_num    = c ^ 48U;
++        c_num0   = (c_num - 10U) >> 8;
++        c_alpha  = (c & ~32U) - 55U;
++        c_alpha0 = ((c_alpha - 10U) ^ (c_alpha - 16U)) >> 8;
++        if ((c_num0 | c_alpha0) == 0U) {
++            if (ignore != NULL && state == 0U && strchr(ignore, c) != NULL) {
++                hex_pos++;
++                continue;
++            }
++            break;
++        }
++        c_val = (uint8_t) ((c_num0 & c_num) | (c_alpha0 & c_alpha));
++        if (bin_pos >= bin_maxlen) {
++            ret   = -1;
++            errno = ERANGE;
++            break;
++        }
++        if (state == 0U) {
++            c_acc = c_val * 16U;
++        } else {
++            bin[bin_pos++] = c_acc | c_val;
++        }
++        state = ~state;
++        hex_pos++;
++    }
++    if (state != 0U) {
++        hex_pos--;
++        errno = EINVAL;
++        ret   = -1;
++    }
++    if (ret != 0) {
++        bin_pos = (size_t) 0U;
++    }
++    if (hex_end_p != NULL) {
++        *hex_end_p = &hex[hex_pos];
++    } else if (hex_pos != hex_len) {
++        errno = EINVAL;
++        ret   = -1;
++    }
++    if (ret != 0) {
++        return ret;
++    }
++    return (int) bin_pos;
++}
++
++bool
++hydro_equal(const void *b1_, const void *b2_, size_t len)
++{
++    const volatile uint8_t *volatile b1 = (const volatile uint8_t *volatile) b1_;
++    const uint8_t *b2                   = (const uint8_t *) b2_;
++    size_t         i;
++    uint8_t        d = (uint8_t) 0U;
++
++    if (b1 == b2) {
++        d = ~d;
++    }
++    for (i = 0U; i < len; i++) {
++        d |= b1[i] ^ b2[i];
++    }
++    return (bool) (1 & ((d - 1) >> 8));
++}
++
++int
++hydro_compare(const uint8_t *b1_, const uint8_t *b2_, size_t len)
++{
++    const volatile uint8_t *volatile b1 = (const volatile uint8_t *volatile) b1_;
++    const uint8_t *b2                   = (const uint8_t *) b2_;
++    uint8_t        gt                   = 0U;
++    uint8_t        eq                   = 1U;
++    size_t         i;
++
++    i = len;
++    while (i != 0U) {
++        i--;
++        gt |= ((b2[i] - b1[i]) >> 8) & eq;
++        eq &= ((b2[i] ^ b1[i]) - 1) >> 8;
++    }
++    return (int) (gt + gt + eq) - 1;
++}
++
++int
++hydro_pad(unsigned char *buf, size_t unpadded_buflen, size_t blocksize, size_t max_buflen)
++{
++    unsigned char         *tail;
++    size_t                 i;
++    size_t                 xpadlen;
++    size_t                 xpadded_len;
++    volatile unsigned char mask;
++    unsigned char          barrier_mask;
++
++    if (blocksize <= 0U || max_buflen > INT_MAX) {
++        return -1;
++    }
++    xpadlen = blocksize - 1U;
++    if ((blocksize & (blocksize - 1U)) == 0U) {
++        xpadlen -= unpadded_buflen & (blocksize - 1U);
++    } else {
++        xpadlen -= unpadded_buflen % blocksize;
++    }
++    if ((size_t) SIZE_MAX - unpadded_buflen <= xpadlen) {
++        return -1;
++    }
++    xpadded_len = unpadded_buflen + xpadlen;
++    if (xpadded_len >= max_buflen) {
++        return -1;
++    }
++    tail = &buf[xpadded_len];
++    mask = 0U;
++    for (i = 0; i < blocksize; i++) {
++        barrier_mask = (unsigned char) (((i ^ xpadlen) - 1U) >> ((sizeof(size_t) - 1U) * CHAR_BIT));
++        *(tail - i)  = ((*(tail - i)) & mask) | (0x80 & barrier_mask);
++        mask |= barrier_mask;
++    }
++    return (int) (xpadded_len + 1);
++}
++
++int
++hydro_unpad(const unsigned char *buf, size_t padded_buflen, size_t blocksize)
++{
++    const unsigned char *tail;
++    unsigned char        acc = 0U;
++    unsigned char        c;
++    unsigned char        valid   = 0U;
++    volatile size_t      pad_len = 0U;
++    size_t               i;
++    size_t               is_barrier;
++
++    if (padded_buflen < blocksize || blocksize <= 0U) {
++        return -1;
++    }
++    tail = &buf[padded_buflen - 1U];
++
++    for (i = 0U; i < blocksize; i++) {
++        c          = *(tail - i);
++        is_barrier = (((acc - 1U) & (pad_len - 1U) & ((c ^ 0x80) - 1U)) >> 8) & 1U;
++        acc |= c;
++        pad_len |= i & (1U + ~is_barrier);
++        valid |= (unsigned char) is_barrier;
++    }
++    if (valid == 0) {
++        return -1;
++    }
++    return (int) (padded_buflen - 1 - pad_len);
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/gimli-core.h b/source/texk/web2c/luatexdir/libhydrogen/gimli-core.h
+new file mode 100644
+index 000000000..83ee82ab8
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/gimli-core.h
+@@ -0,0 +1,25 @@
++#ifdef __SSE2__
++#    include "gimli-core/sse2.h"
++#else
++#    include "gimli-core/portable.h"
++#endif
++
++static void
++gimli_core_u8(uint8_t state_u8[gimli_BLOCKBYTES], uint8_t tag)
++{
++    state_u8[gimli_BLOCKBYTES - 1] ^= tag;
++#ifndef NATIVE_LITTLE_ENDIAN
++    uint32_t state_u32[12];
++    int      i;
++
++    for (i = 0; i < 12; i++) {
++        state_u32[i] = LOAD32_LE(&state_u8[i * 4]);
++    }
++    gimli_core(state_u32);
++    for (i = 0; i < 12; i++) {
++        STORE32_LE(&state_u8[i * 4], state_u32[i]);
++    }
++#else
++    gimli_core((uint32_t *) (void *) state_u8); /* state_u8 must be properly aligned */
++#endif
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/gimli-core/portable.h b/source/texk/web2c/luatexdir/libhydrogen/gimli-core/portable.h
+new file mode 100644
+index 000000000..db6b84cef
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/gimli-core/portable.h
+@@ -0,0 +1,39 @@
++static void
++gimli_core(uint32_t state[gimli_BLOCKBYTES / 4])
++{
++    unsigned int round;
++    unsigned int column;
++    uint32_t     x;
++    uint32_t     y;
++    uint32_t     z;
++
++    for (round = 24; round > 0; round--) {
++        for (column = 0; column < 4; column++) {
++            x = ROTL32(state[column], 24);
++            y = ROTL32(state[4 + column], 9);
++            z = state[8 + column];
++
++            state[8 + column] = x ^ (z << 1) ^ ((y & z) << 2);
++            state[4 + column] = y ^ x ^ ((x | z) << 1);
++            state[column]     = z ^ y ^ ((x & y) << 3);
++        }
++        switch (round & 3) {
++        case 0:
++            x        = state[0];
++            state[0] = state[1];
++            state[1] = x;
++            x        = state[2];
++            state[2] = state[3];
++            state[3] = x;
++            state[0] ^= ((uint32_t) 0x9e377900 | round);
++            break;
++        case 2:
++            x        = state[0];
++            state[0] = state[2];
++            state[2] = x;
++            x        = state[1];
++            state[1] = state[3];
++            state[3] = x;
++        }
++    }
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/gimli-core/sse2.h b/source/texk/web2c/luatexdir/libhydrogen/gimli-core/sse2.h
+new file mode 100644
+index 000000000..0e6fce6b7
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/gimli-core/sse2.h
+@@ -0,0 +1,112 @@
++#include <emmintrin.h>
++#ifdef __SSSE3__
++#    include <tmmintrin.h>
++#endif
++
++#define S 9
++
++static inline __m128i
++shift(__m128i x, int bits)
++{
++    return _mm_slli_epi32(x, bits);
++}
++
++static inline __m128i
++rotate(__m128i x, int bits)
++{
++    return _mm_slli_epi32(x, bits) | _mm_srli_epi32(x, 32 - bits);
++}
++
++#ifdef __SSSE3__
++static inline __m128i
++rotate24(__m128i x)
++{
++    return _mm_shuffle_epi8(x, _mm_set_epi8(12, 15, 14, 13, 8, 11, 10, 9, 4, 7, 6, 5, 0, 3, 2, 1));
++}
++#else
++static inline __m128i
++rotate24(__m128i x)
++{
++    uint8_t _hydro_attr_aligned_(16) x8[16], y8[16];
++
++    _mm_storeu_si128((__m128i *) (void *) x8, x);
++
++    y8[0]  = x8[1];
++    y8[1]  = x8[2];
++    y8[2]  = x8[3];
++    y8[3]  = x8[0];
++    y8[4]  = x8[5];
++    y8[5]  = x8[6];
++    y8[6]  = x8[7];
++    y8[7]  = x8[4];
++    y8[8]  = x8[9];
++    y8[9]  = x8[10];
++    y8[10] = x8[11];
++    y8[11] = x8[8];
++    y8[12] = x8[13];
++    y8[13] = x8[14];
++    y8[14] = x8[15];
++    y8[15] = x8[12];
++
++    return _mm_loadu_si128((const __m128i *) (const void *) y8);
++}
++#endif
++
++static const uint32_t _hydro_attr_aligned_(16) coeffs[24] = {
++    0x9e377904, 0, 0, 0, 0x9e377908, 0, 0, 0, 0x9e37790c, 0, 0, 0,
++    0x9e377910, 0, 0, 0, 0x9e377914, 0, 0, 0, 0x9e377918, 0, 0, 0,
++};
++
++static void
++gimli_core(uint32_t state[gimli_BLOCKBYTES / 4])
++{
++    __m128i x = _mm_loadu_si128((const __m128i *) (const void *) &state[0]);
++    __m128i y = _mm_loadu_si128((const __m128i *) (const void *) &state[4]);
++    __m128i z = _mm_loadu_si128((const __m128i *) (const void *) &state[8]);
++    __m128i newy;
++    __m128i newz;
++    int     round;
++
++    for (round = 5; round >= 0; round--) {
++        x    = rotate24(x);
++        y    = rotate(y, S);
++        newz = x ^ shift(z, 1) ^ shift(y & z, 2);
++        newy = y ^ x ^ shift(x | z, 1);
++        x    = z ^ y ^ shift(x & y, 3);
++        y    = newy;
++        z    = newz;
++
++        x = _mm_shuffle_epi32(x, _MM_SHUFFLE(2, 3, 0, 1));
++        x ^= ((const __m128i *) (const void *) coeffs)[round];
++
++        x    = rotate24(x);
++        y    = rotate(y, S);
++        newz = x ^ shift(z, 1) ^ shift(y & z, 2);
++        newy = y ^ x ^ shift(x | z, 1);
++        x    = z ^ y ^ shift(x & y, 3);
++        y    = newy;
++        z    = newz;
++
++        x    = rotate24(x);
++        y    = rotate(y, S);
++        newz = x ^ shift(z, 1) ^ shift(y & z, 2);
++        newy = y ^ x ^ shift(x | z, 1);
++        x    = z ^ y ^ shift(x & y, 3);
++        y    = newy;
++        z    = newz;
++
++        x = _mm_shuffle_epi32(x, _MM_SHUFFLE(1, 0, 3, 2));
++
++        x    = rotate24(x);
++        y    = rotate(y, S);
++        newz = x ^ shift(z, 1) ^ shift(y & z, 2);
++        newy = y ^ x ^ shift(x | z, 1);
++        x    = z ^ y ^ shift(x & y, 3);
++        y    = newy;
++        z    = newz;
++    }
++
++    _mm_storeu_si128((__m128i *) (void *) &state[0], x);
++    _mm_storeu_si128((__m128i *) (void *) &state[4], y);
++    _mm_storeu_si128((__m128i *) (void *) &state[8], z);
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/hash.h b/source/texk/web2c/luatexdir/libhydrogen/hash.h
+new file mode 100644
+index 000000000..209ca2846
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/hash.h
+@@ -0,0 +1,142 @@
++int
++hydro_hash_update(hydro_hash_state *state, const void *in_, size_t in_len)
++{
++    const uint8_t *in  = (const uint8_t *) in_;
++    uint8_t       *buf = (uint8_t *) (void *) state->state;
++    size_t         left;
++    size_t         ps;
++    size_t         i;
++
++    while (in_len > 0) {
++        left = gimli_RATE - state->buf_off;
++        if ((ps = in_len) > left) {
++            ps = left;
++        }
++        for (i = 0; i < ps; i++) {
++            buf[state->buf_off + i] ^= in[i];
++        }
++        in += ps;
++        in_len -= ps;
++        state->buf_off += (uint8_t) ps;
++        if (state->buf_off == gimli_RATE) {
++            gimli_core_u8(buf, 0);
++            state->buf_off = 0;
++        }
++    }
++    return 0;
++}
++
++/* pad(str_enc("kmac") || str_enc(context)) || pad(str_enc(k)) ||
++   msg || right_enc(msg_len) || 0x00 */
++
++int
++hydro_hash_init(hydro_hash_state *state, const char ctx[hydro_hash_CONTEXTBYTES],
++                const uint8_t key[hydro_hash_KEYBYTES])
++{
++    uint8_t block[64] = { 4, 'k', 'm', 'a', 'c', 8 };
++    size_t  p;
++
++    COMPILER_ASSERT(hydro_hash_KEYBYTES <= sizeof block - gimli_RATE - 1);
++    COMPILER_ASSERT(hydro_hash_CONTEXTBYTES == 8);
++    mem_zero(block + 14, sizeof block - 14);
++    memcpy(block + 6, ctx, 8);
++    if (key != NULL) {
++        block[gimli_RATE] = (uint8_t) hydro_hash_KEYBYTES;
++        memcpy(block + gimli_RATE + 1, key, hydro_hash_KEYBYTES);
++        p = (gimli_RATE + 1 + hydro_hash_KEYBYTES + (gimli_RATE - 1)) & ~(size_t) (gimli_RATE - 1);
++    } else {
++        block[gimli_RATE] = (uint8_t) 0;
++        p                 = (gimli_RATE + 1 + 0 + (gimli_RATE - 1)) & ~(size_t) (gimli_RATE - 1);
++    }
++    mem_zero(state, sizeof *state);
++    hydro_hash_update(state, block, p);
++
++    return 0;
++}
++
++/* pad(str_enc("tmac") || str_enc(context)) || pad(str_enc(k)) ||
++   pad(right_enc(tweak)) || msg || right_enc(msg_len) || 0x00 */
++
++static int
++hydro_hash_init_with_tweak(hydro_hash_state *state, const char ctx[hydro_hash_CONTEXTBYTES],
++                           uint64_t tweak, const uint8_t key[hydro_hash_KEYBYTES])
++{
++    uint8_t block[80] = { 4, 't', 'm', 'a', 'c', 8 };
++    size_t  p;
++
++    COMPILER_ASSERT(hydro_hash_KEYBYTES <= sizeof block - 2 * gimli_RATE - 1);
++    COMPILER_ASSERT(hydro_hash_CONTEXTBYTES == 8);
++    mem_zero(block + 14, sizeof block - 14);
++    memcpy(block + 6, ctx, 8);
++    if (key != NULL) {
++        block[gimli_RATE] = (uint8_t) hydro_hash_KEYBYTES;
++        memcpy(block + gimli_RATE + 1, key, hydro_hash_KEYBYTES);
++        p = (gimli_RATE + 1 + hydro_hash_KEYBYTES + (gimli_RATE - 1)) & ~(size_t) (gimli_RATE - 1);
++    } else {
++        block[gimli_RATE] = (uint8_t) 0;
++        p                 = (gimli_RATE + 1 + 0 + (gimli_RATE - 1)) & ~(size_t) (gimli_RATE - 1);
++    }
++    block[p] = (uint8_t) sizeof tweak;
++    STORE64_LE(&block[p + 1], tweak);
++    p += gimli_RATE;
++    mem_zero(state, sizeof *state);
++    hydro_hash_update(state, block, p);
++
++    return 0;
++}
++
++int
++hydro_hash_final(hydro_hash_state *state, uint8_t *out, size_t out_len)
++{
++    uint8_t  lc[4];
++    uint8_t *buf = (uint8_t *) (void *) state->state;
++    size_t   i;
++    size_t   lc_len;
++    size_t   leftover;
++
++    if (out_len == 0) {
++        /* allow callers to finalize without producing output */
++    } else if (out_len < hydro_hash_BYTES_MIN || out_len > hydro_hash_BYTES_MAX || out == NULL) {
++        return -1;
++    }
++    COMPILER_ASSERT(hydro_hash_BYTES_MAX <= 0xffff);
++    lc[1]  = (uint8_t) out_len;
++    lc[2]  = (uint8_t) (out_len >> 8);
++    lc[3]  = 0;
++    lc_len = (size_t) (1 + (lc[2] != 0));
++    lc[0]  = (uint8_t) lc_len;
++    hydro_hash_update(state, lc, 1 + lc_len + 1);
++    gimli_pad_u8(buf, state->buf_off, gimli_DOMAIN_XOF);
++    for (i = 0; i < out_len / gimli_RATE; i++) {
++        gimli_core_u8(buf, 0);
++        memcpy(out + i * gimli_RATE, buf, gimli_RATE);
++    }
++    leftover = out_len % gimli_RATE;
++    if (leftover != 0) {
++        gimli_core_u8(buf, 0);
++        mem_cpy(out + i * gimli_RATE, buf, leftover);
++    }
++    state->buf_off = gimli_RATE;
++
++    return 0;
++}
++
++int
++hydro_hash_hash(uint8_t *out, size_t out_len, const void *in_, size_t in_len,
++                const char ctx[hydro_hash_CONTEXTBYTES], const uint8_t key[hydro_hash_KEYBYTES])
++{
++    hydro_hash_state st;
++    const uint8_t   *in = (const uint8_t *) in_;
++
++    if (hydro_hash_init(&st, ctx, key) != 0 || hydro_hash_update(&st, in, in_len) != 0 ||
++        hydro_hash_final(&st, out, out_len) != 0) {
++        return -1;
++    }
++    return 0;
++}
++
++void
++hydro_hash_keygen(uint8_t key[hydro_hash_KEYBYTES])
++{
++    hydro_random_buf(key, hydro_hash_KEYBYTES);
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/hydrogen.c b/source/texk/web2c/luatexdir/libhydrogen/hydrogen.c
+new file mode 100644
+index 000000000..a15549fa7
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/hydrogen.c
+@@ -0,0 +1,28 @@
++#ifdef __GNUC__ // (added)
++    #pragma GCC diagnostic push // (added)
++    #pragma GCC diagnostic ignored "-Wunused-function" // (added)
++#endif // (added)
++
++#include "hydrogen.h"
++
++#include "common.h"
++#include "hydrogen_p.h"
++
++#include "random.h"
++
++#include "core.h"
++#include "gimli-core.h"
++
++#include "hash.h"
++// #include "kdf.h" // (omitted)
++// #include "secretbox.h" // (omitted)
++
++#include "x25519.h"
++
++// #include "kx.h" // (omitted)
++// #include "pwhash.h" // (omitted)
++#include "sign.h"
++
++#ifdef __GNUC__ // (added)
++    #pragma GCC diagnostic pop // (added)
++#endif // (added)
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/hydrogen.h b/source/texk/web2c/luatexdir/libhydrogen/hydrogen.h
+new file mode 100644
+index 000000000..32de84881
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/hydrogen.h
+@@ -0,0 +1,337 @@
++#ifndef hydrogen_H
++#define hydrogen_H
++
++#if !(defined(__linux__) && defined(__KERNEL__))
++#    include <stdbool.h>
++#    include <stdint.h>
++#    include <stdlib.h>
++#endif
++
++#if !defined(__cplusplus) && defined(__GNUC__)
++#    pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
++#endif
++
++#ifdef __cplusplus
++#    ifdef __GNUC__
++#        pragma GCC diagnostic ignored "-Wlong-long"
++#    endif
++extern "C" {
++#endif
++
++#if defined(__clang__) || defined(__GNUC__)
++#    define _hydro_attr_(X) __attribute__(X)
++#else
++#    define _hydro_attr_(X)
++#endif
++#define _hydro_attr_deprecated_         _hydro_attr_((deprecated))
++#define _hydro_attr_malloc_             _hydro_attr_((malloc))
++#define _hydro_attr_noinline_           _hydro_attr_((noinline))
++#define _hydro_attr_noreturn_           _hydro_attr_((noreturn))
++#define _hydro_attr_warn_unused_result_ _hydro_attr_((warn_unused_result))
++#define _hydro_attr_weak_               _hydro_attr_((weak))
++
++#if defined(__INTEL_COMPILER) || defined(_MSC_VER)
++#    define _hydro_attr_aligned_(X) __declspec(align(X))
++#elif defined(__clang__) || defined(__GNUC__)
++#    define _hydro_attr_aligned_(X) _hydro_attr_((aligned(X)))
++#else
++#    define _hydro_attr_aligned_(X)
++#endif
++
++#define HYDRO_VERSION_MAJOR 1
++#define HYDRO_VERSION_MINOR 0
++
++int hydro_init(void);
++
++/* ---------------- */
++
++#define hydro_random_SEEDBYTES 32
++
++uint32_t hydro_random_u32(void);
++
++uint32_t hydro_random_uniform(const uint32_t upper_bound);
++
++void hydro_random_buf(void *out, size_t out_len);
++
++void hydro_random_buf_deterministic(void *out, size_t out_len,
++                                    const uint8_t seed[hydro_random_SEEDBYTES]);
++
++void hydro_random_ratchet(void);
++
++void hydro_random_reseed(void);
++
++/* ---------------- */
++
++#define hydro_hash_BYTES        32
++#define hydro_hash_BYTES_MAX    65535
++#define hydro_hash_BYTES_MIN    16
++#define hydro_hash_CONTEXTBYTES 8
++#define hydro_hash_KEYBYTES     32
++
++typedef struct hydro_hash_state {
++    uint32_t state[12];
++    uint8_t  buf_off;
++    uint8_t  align[3];
++} hydro_hash_state;
++
++void hydro_hash_keygen(uint8_t key[hydro_hash_KEYBYTES]);
++
++int hydro_hash_init(hydro_hash_state *state, const char ctx[hydro_hash_CONTEXTBYTES],
++                    const uint8_t key[hydro_hash_KEYBYTES]);
++
++int hydro_hash_update(hydro_hash_state *state, const void *in_, size_t in_len);
++
++int hydro_hash_final(hydro_hash_state *state, uint8_t *out, size_t out_len);
++
++int hydro_hash_hash(uint8_t *out, size_t out_len, const void *in_, size_t in_len,
++                    const char    ctx[hydro_hash_CONTEXTBYTES],
++                    const uint8_t key[hydro_hash_KEYBYTES]);
++
++/* ---------------- */
++
++#define hydro_secretbox_CONTEXTBYTES 8
++#define hydro_secretbox_HEADERBYTES  (20 + 16)
++#define hydro_secretbox_KEYBYTES     32
++#define hydro_secretbox_PROBEBYTES   16
++
++void hydro_secretbox_keygen(uint8_t key[hydro_secretbox_KEYBYTES]);
++
++int hydro_secretbox_encrypt(uint8_t *c, const void *m_, size_t mlen, uint64_t msg_id,
++                            const char    ctx[hydro_secretbox_CONTEXTBYTES],
++                            const uint8_t key[hydro_secretbox_KEYBYTES]);
++
++int hydro_secretbox_decrypt(void *m_, const uint8_t *c, size_t clen, uint64_t msg_id,
++                            const char    ctx[hydro_secretbox_CONTEXTBYTES],
++                            const uint8_t key[hydro_secretbox_KEYBYTES])
++    _hydro_attr_warn_unused_result_;
++
++void hydro_secretbox_probe_create(uint8_t probe[hydro_secretbox_PROBEBYTES], const uint8_t *c,
++                                  size_t c_len, const char ctx[hydro_secretbox_CONTEXTBYTES],
++                                  const uint8_t key[hydro_secretbox_KEYBYTES]);
++
++int hydro_secretbox_probe_verify(const uint8_t probe[hydro_secretbox_PROBEBYTES], const uint8_t *c,
++                                 size_t c_len, const char ctx[hydro_secretbox_CONTEXTBYTES],
++                                 const uint8_t key[hydro_secretbox_KEYBYTES])
++    _hydro_attr_warn_unused_result_;
++
++/* ---------------- */
++
++#define hydro_kdf_CONTEXTBYTES 8
++#define hydro_kdf_KEYBYTES     32
++#define hydro_kdf_BYTES_MAX    65535
++#define hydro_kdf_BYTES_MIN    16
++
++void hydro_kdf_keygen(uint8_t key[hydro_kdf_KEYBYTES]);
++
++int hydro_kdf_derive_from_key(uint8_t *subkey, size_t subkey_len, uint64_t subkey_id,
++                              const char    ctx[hydro_kdf_CONTEXTBYTES],
++                              const uint8_t key[hydro_kdf_KEYBYTES]);
++
++/* ---------------- */
++
++#define hydro_sign_BYTES          64
++#define hydro_sign_CONTEXTBYTES   8
++#define hydro_sign_PUBLICKEYBYTES 32
++#define hydro_sign_SECRETKEYBYTES 64
++#define hydro_sign_SEEDBYTES      32
++
++typedef struct hydro_sign_state {
++    hydro_hash_state hash_st;
++} hydro_sign_state;
++
++typedef struct hydro_sign_keypair {
++    uint8_t pk[hydro_sign_PUBLICKEYBYTES];
++    uint8_t sk[hydro_sign_SECRETKEYBYTES];
++} hydro_sign_keypair;
++
++void hydro_sign_keygen(hydro_sign_keypair *kp);
++
++void hydro_sign_keygen_deterministic(hydro_sign_keypair *kp,
++                                     const uint8_t       seed[hydro_sign_SEEDBYTES]);
++
++int hydro_sign_init(hydro_sign_state *state, const char ctx[hydro_sign_CONTEXTBYTES]);
++
++int hydro_sign_update(hydro_sign_state *state, const void *m_, size_t mlen);
++
++int hydro_sign_final_create(hydro_sign_state *state, uint8_t csig[hydro_sign_BYTES],
++                            const uint8_t sk[hydro_sign_SECRETKEYBYTES]);
++
++int hydro_sign_final_verify(hydro_sign_state *state, const uint8_t csig[hydro_sign_BYTES],
++                            const uint8_t pk[hydro_sign_PUBLICKEYBYTES])
++    _hydro_attr_warn_unused_result_;
++
++int hydro_sign_create(uint8_t csig[hydro_sign_BYTES], const void *m_, size_t mlen,
++                      const char    ctx[hydro_sign_CONTEXTBYTES],
++                      const uint8_t sk[hydro_sign_SECRETKEYBYTES]);
++
++int hydro_sign_verify(const uint8_t csig[hydro_sign_BYTES], const void *m_, size_t mlen,
++                      const char    ctx[hydro_sign_CONTEXTBYTES],
++                      const uint8_t pk[hydro_sign_PUBLICKEYBYTES]) _hydro_attr_warn_unused_result_;
++
++/* ---------------- */
++
++#define hydro_kx_SESSIONKEYBYTES 32
++#define hydro_kx_PUBLICKEYBYTES  32
++#define hydro_kx_SECRETKEYBYTES  32
++#define hydro_kx_PSKBYTES        32
++#define hydro_kx_SEEDBYTES       32
++
++typedef struct hydro_kx_keypair {
++    uint8_t pk[hydro_kx_PUBLICKEYBYTES];
++    uint8_t sk[hydro_kx_SECRETKEYBYTES];
++} hydro_kx_keypair;
++
++typedef struct hydro_kx_session_keypair {
++    uint8_t rx[hydro_kx_SESSIONKEYBYTES];
++    uint8_t tx[hydro_kx_SESSIONKEYBYTES];
++} hydro_kx_session_keypair;
++
++typedef struct hydro_kx_state {
++    hydro_kx_keypair eph_kp;
++    hydro_hash_state h_st;
++} hydro_kx_state;
++
++void hydro_kx_keygen(hydro_kx_keypair *static_kp);
++
++void hydro_kx_keygen_deterministic(hydro_kx_keypair *static_kp,
++                                   const uint8_t     seed[hydro_kx_SEEDBYTES]);
++
++/* NOISE_N */
++
++#define hydro_kx_N_PACKET1BYTES (32 + 16)
++
++int hydro_kx_n_1(hydro_kx_session_keypair *kp, uint8_t packet1[hydro_kx_N_PACKET1BYTES],
++                 const uint8_t psk[hydro_kx_PSKBYTES],
++                 const uint8_t peer_static_pk[hydro_kx_PUBLICKEYBYTES]);
++
++int hydro_kx_n_2(hydro_kx_session_keypair *kp, const uint8_t packet1[hydro_kx_N_PACKET1BYTES],
++                 const uint8_t psk[hydro_kx_PSKBYTES], const hydro_kx_keypair *static_kp);
++
++/* NOISE_KK */
++
++#define hydro_kx_KK_PACKET1BYTES (32 + 16)
++#define hydro_kx_KK_PACKET2BYTES (32 + 16)
++
++int hydro_kx_kk_1(hydro_kx_state *state, uint8_t packet1[hydro_kx_KK_PACKET1BYTES],
++                  const uint8_t           peer_static_pk[hydro_kx_PUBLICKEYBYTES],
++                  const hydro_kx_keypair *static_kp);
++
++int hydro_kx_kk_2(hydro_kx_session_keypair *kp, uint8_t packet2[hydro_kx_KK_PACKET2BYTES],
++                  const uint8_t           packet1[hydro_kx_KK_PACKET1BYTES],
++                  const uint8_t           peer_static_pk[hydro_kx_PUBLICKEYBYTES],
++                  const hydro_kx_keypair *static_kp);
++
++int hydro_kx_kk_3(hydro_kx_state *state, hydro_kx_session_keypair *kp,
++                  const uint8_t           packet2[hydro_kx_KK_PACKET2BYTES],
++                  const hydro_kx_keypair *static_kp);
++
++/* NOISE_XX */
++
++#define hydro_kx_XX_PACKET1BYTES (32 + 16)
++#define hydro_kx_XX_PACKET2BYTES (32 + 32 + 16 + 16)
++#define hydro_kx_XX_PACKET3BYTES (32 + 16 + 16)
++
++int hydro_kx_xx_1(hydro_kx_state *state, uint8_t packet1[hydro_kx_XX_PACKET1BYTES],
++                  const uint8_t psk[hydro_kx_PSKBYTES]);
++
++int hydro_kx_xx_2(hydro_kx_state *state, uint8_t packet2[hydro_kx_XX_PACKET2BYTES],
++                  const uint8_t packet1[hydro_kx_XX_PACKET1BYTES],
++                  const uint8_t psk[hydro_kx_PSKBYTES], const hydro_kx_keypair *static_kp);
++
++int hydro_kx_xx_3(hydro_kx_state *state, hydro_kx_session_keypair *kp,
++                  uint8_t       packet3[hydro_kx_XX_PACKET3BYTES],
++                  uint8_t       peer_static_pk[hydro_kx_PUBLICKEYBYTES],
++                  const uint8_t packet2[hydro_kx_XX_PACKET2BYTES],
++                  const uint8_t psk[hydro_kx_PSKBYTES], const hydro_kx_keypair *static_kp);
++
++int hydro_kx_xx_4(hydro_kx_state *state, hydro_kx_session_keypair *kp,
++                  uint8_t       peer_static_pk[hydro_kx_PUBLICKEYBYTES],
++                  const uint8_t packet3[hydro_kx_XX_PACKET3BYTES],
++                  const uint8_t psk[hydro_kx_PSKBYTES]);
++
++/* NOISE_NK */
++
++#define hydro_kx_NK_PACKET1BYTES (32 + 16)
++#define hydro_kx_NK_PACKET2BYTES (32 + 16)
++
++int hydro_kx_nk_1(hydro_kx_state *state, uint8_t packet1[hydro_kx_NK_PACKET1BYTES],
++                  const uint8_t psk[hydro_kx_PSKBYTES],
++                  const uint8_t peer_static_pk[hydro_kx_PUBLICKEYBYTES]);
++
++int hydro_kx_nk_2(hydro_kx_session_keypair *kp, uint8_t packet2[hydro_kx_NK_PACKET2BYTES],
++                  const uint8_t packet1[hydro_kx_NK_PACKET1BYTES],
++                  const uint8_t psk[hydro_kx_PSKBYTES], const hydro_kx_keypair *static_kp);
++
++int hydro_kx_nk_3(hydro_kx_state *state, hydro_kx_session_keypair *kp,
++                  const uint8_t packet2[hydro_kx_NK_PACKET2BYTES]);
++
++/* ---------------- */
++
++#define hydro_pwhash_CONTEXTBYTES   8
++#define hydro_pwhash_MASTERKEYBYTES 32
++#define hydro_pwhash_STOREDBYTES    128
++
++void hydro_pwhash_keygen(uint8_t master_key[hydro_pwhash_MASTERKEYBYTES]);
++
++int hydro_pwhash_deterministic(uint8_t *h, size_t h_len, const char *passwd, size_t passwd_len,
++                               const char    ctx[hydro_pwhash_CONTEXTBYTES],
++                               const uint8_t master_key[hydro_pwhash_MASTERKEYBYTES],
++                               uint64_t opslimit, size_t memlimit, uint8_t threads);
++
++int hydro_pwhash_create(uint8_t stored[hydro_pwhash_STOREDBYTES], const char *passwd,
++                        size_t passwd_len, const uint8_t master_key[hydro_pwhash_MASTERKEYBYTES],
++                        uint64_t opslimit, size_t memlimit, uint8_t threads);
++
++int hydro_pwhash_verify(const uint8_t stored[hydro_pwhash_STOREDBYTES], const char *passwd,
++                        size_t passwd_len, const uint8_t master_key[hydro_pwhash_MASTERKEYBYTES],
++                        uint64_t opslimit_max, size_t memlimit_max, uint8_t threads_max);
++
++int hydro_pwhash_derive_static_key(uint8_t *static_key, size_t static_key_len,
++                                   const uint8_t stored[hydro_pwhash_STOREDBYTES],
++                                   const char *passwd, size_t passwd_len,
++                                   const char    ctx[hydro_pwhash_CONTEXTBYTES],
++                                   const uint8_t master_key[hydro_pwhash_MASTERKEYBYTES],
++                                   uint64_t opslimit_max, size_t memlimit_max, uint8_t threads_max);
++
++int hydro_pwhash_reencrypt(uint8_t       stored[hydro_pwhash_STOREDBYTES],
++                           const uint8_t master_key[hydro_pwhash_MASTERKEYBYTES],
++                           const uint8_t new_master_key[hydro_pwhash_MASTERKEYBYTES]);
++
++int hydro_pwhash_upgrade(uint8_t       stored[hydro_pwhash_STOREDBYTES],
++                         const uint8_t master_key[hydro_pwhash_MASTERKEYBYTES], uint64_t opslimit,
++                         size_t memlimit, uint8_t threads);
++
++/* ---------------- */
++
++void hydro_memzero(void *pnt, size_t len);
++
++void hydro_increment(uint8_t *n, size_t len);
++
++bool hydro_equal(const void *b1_, const void *b2_, size_t len);
++
++int hydro_compare(const uint8_t *b1_, const uint8_t *b2_, size_t len);
++
++char *hydro_bin2hex(char *hex, size_t hex_maxlen, const uint8_t *bin, size_t bin_len);
++
++int hydro_hex2bin(uint8_t *bin, size_t bin_maxlen, const char *hex, size_t hex_len,
++                  const char *ignore, const char **hex_end_p);
++
++int hydro_pad(unsigned char *buf, size_t unpadded_buflen, size_t blocksize, size_t max_buflen);
++
++int hydro_unpad(const unsigned char *buf, size_t padded_buflen, size_t blocksize);
++
++/* ---------------- */
++
++#define HYDRO_HWTYPE_ATMEGA328 1
++
++#ifndef HYDRO_HWTYPE
++#    ifdef __AVR__
++#        define HYDRO_HWTYPE HYDRO_HWTYPE_ATMEGA328
++#    endif
++#endif
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/hydrogen_p.h b/source/texk/web2c/luatexdir/libhydrogen/hydrogen_p.h
+new file mode 100644
+index 000000000..f228fa252
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/hydrogen_p.h
+@@ -0,0 +1,82 @@
++static int hydro_random_init(void);
++
++/* ---------------- */
++
++#define gimli_BLOCKBYTES 48
++#define gimli_CAPACITY   32
++#define gimli_RATE       16
++
++#define gimli_TAG_HEADER  0x01
++#define gimli_TAG_PAYLOAD 0x02
++#define gimli_TAG_FINAL   0x08
++#define gimli_TAG_FINAL0  0xf8
++#define gimli_TAG_KEY0    0xfe
++#define gimli_TAG_KEY     0xff
++
++#define gimli_DOMAIN_AEAD 0x0
++#define gimli_DOMAIN_XOF  0xf
++
++static void gimli_core_u8(uint8_t state_u8[gimli_BLOCKBYTES], uint8_t tag);
++
++static inline void
++gimli_pad_u8(uint8_t buf[gimli_BLOCKBYTES], size_t pos, uint8_t domain)
++{
++    buf[pos] ^= (domain << 1) | 1;
++    buf[gimli_RATE - 1] ^= 0x80;
++}
++
++static inline void
++hydro_mem_ct_zero_u32(uint32_t *dst_, size_t n)
++{
++    volatile uint32_t *volatile dst = (volatile uint32_t *volatile) (void *) dst_;
++    size_t i;
++
++    for (i = 0; i < n; i++) {
++        dst[i] = 0;
++    }
++}
++
++static inline uint32_t hydro_mem_ct_cmp_u32(const uint32_t *b1_, const uint32_t *b2,
++                                            size_t n) _hydro_attr_warn_unused_result_;
++
++static inline uint32_t
++hydro_mem_ct_cmp_u32(const uint32_t *b1_, const uint32_t *b2, size_t n)
++{
++    const volatile uint32_t *volatile b1 = (const volatile uint32_t *volatile) (const void *) b1_;
++    size_t   i;
++    uint32_t cv = 0;
++
++    for (i = 0; i < n; i++) {
++        cv |= b1[i] ^ b2[i];
++    }
++    return cv;
++}
++
++/* ---------------- */
++
++static int hydro_hash_init_with_tweak(hydro_hash_state *state,
++                                      const char ctx[hydro_hash_CONTEXTBYTES], uint64_t tweak,
++                                      const uint8_t key[hydro_hash_KEYBYTES]);
++
++/* ---------------- */
++
++#define hydro_secretbox_NONCEBYTES 20
++
++/* ---------------- */
++
++#define hydro_x25519_BYTES          32
++#define hydro_x25519_PUBLICKEYBYTES 32
++#define hydro_x25519_SECRETKEYBYTES 32
++
++static int hydro_x25519_scalarmult(uint8_t       out[hydro_x25519_BYTES],
++                                   const uint8_t scalar[hydro_x25519_SECRETKEYBYTES],
++                                   const uint8_t x1[hydro_x25519_PUBLICKEYBYTES],
++                                   bool          clamp) _hydro_attr_warn_unused_result_;
++
++static inline int hydro_x25519_scalarmult_base(uint8_t       pk[hydro_x25519_PUBLICKEYBYTES],
++                                               const uint8_t sk[hydro_x25519_SECRETKEYBYTES])
++    _hydro_attr_warn_unused_result_;
++
++static inline void
++hydro_x25519_scalarmult_base_uniform(uint8_t       pk[hydro_x25519_PUBLICKEYBYTES],
++                                     const uint8_t sk[hydro_x25519_SECRETKEYBYTES]);
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/random.h b/source/texk/web2c/luatexdir/libhydrogen/random.h
+new file mode 100644
+index 000000000..bb18c5c54
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/random.h
+@@ -0,0 +1,157 @@
++static TLS struct {
++    _hydro_attr_aligned_(16) uint8_t state[gimli_BLOCKBYTES];
++    uint64_t counter;
++    uint8_t  initialized;
++    uint8_t  available;
++} hydro_random_context;
++
++#if defined(AVR) && !defined(__unix__)
++#    include "random/avr.h"
++#elif (defined(ESP32) || defined(ESP8266)) && !defined(__unix__)
++#    include "random/esp32.h"
++#elif defined(PARTICLE) && defined(PLATFORM_ID) && PLATFORM_ID > 2 && !defined(__unix__)
++#    include "random/particle.h"
++#elif defined(__ZEPHYR__)
++#    include "random/zephyr.h"
++#elif (defined(NRF52832_XXAA) || defined(NRF52832_XXAB)) && !defined(__unix__)
++#    include "random/nrf52832.h"
++#elif defined(_WIN32)
++#    include "random/windows.h"
++#elif defined(__wasi__)
++#    include "random/wasi.h"
++#elif defined(__linux__) && defined(__KERNEL__)
++#    include "random/linux_kernel.h"
++#elif defined(__unix__)
++#    include "random/unix.h"
++#elif defined(TARGET_LIKE_MBED)
++#    include "random/mbed.h"
++#elif defined(RIOT_VERSION)
++#    include "random/riot.h"
++#elif defined(STM32F4) || defined(STM32L4)
++#    include "random/stm32.h"
++#elif defined(__RTTHREAD__)
++#    include "random/rtthread.h"
++#elif defined(CH32V30x_D8) || defined(CH32V30x_D8C)
++#    include "random/ch32.h"
++#elif defined(CHIBIOS)
++#    include "random/chibios.h"
++#elif defined(__CHERIOT__)
++#    include "random/cheriot.h"
++#else
++#    error Unsupported platform
++#endif
++
++static void
++hydro_random_ensure_initialized(void)
++{
++    if (hydro_random_context.initialized == 0) {
++        if (hydro_random_init() != 0) {
++            abort();
++        }
++        gimli_core_u8(hydro_random_context.state, 0);
++        hydro_random_ratchet();
++        hydro_random_context.initialized = 1;
++    }
++}
++
++void
++hydro_random_ratchet(void)
++{
++    mem_zero(hydro_random_context.state, gimli_RATE);
++    STORE64_LE(hydro_random_context.state, hydro_random_context.counter);
++    hydro_random_context.counter++;
++    gimli_core_u8(hydro_random_context.state, 0);
++    hydro_random_context.available = gimli_RATE;
++}
++
++uint32_t
++hydro_random_u32(void)
++{
++    uint32_t v;
++
++    hydro_random_ensure_initialized();
++    if (hydro_random_context.available < 4) {
++        hydro_random_ratchet();
++    }
++    memcpy(&v, &hydro_random_context.state[gimli_RATE - hydro_random_context.available], 4);
++    hydro_random_context.available -= 4;
++
++    return v;
++}
++
++uint32_t
++hydro_random_uniform(const uint32_t upper_bound)
++{
++    uint32_t min;
++    uint32_t r;
++
++    if (upper_bound < 2U) {
++        return 0;
++    }
++    min = (1U + ~upper_bound) % upper_bound; /* = 2**32 mod upper_bound */
++    do {
++        r = hydro_random_u32();
++    } while (r < min);
++    /* r is now clamped to a set whose size mod upper_bound == 0
++     * the worst case (2**31+1) requires 2 attempts on average */
++
++    return r % upper_bound;
++}
++
++void
++hydro_random_buf(void *out, size_t out_len)
++{
++    uint8_t *p = (uint8_t *) out;
++    size_t   i;
++    size_t   leftover;
++
++    hydro_random_ensure_initialized();
++    for (i = 0; i < out_len / gimli_RATE; i++) {
++        gimli_core_u8(hydro_random_context.state, 0);
++        memcpy(p + i * gimli_RATE, hydro_random_context.state, gimli_RATE);
++    }
++    leftover = out_len % gimli_RATE;
++    if (leftover != 0) {
++        gimli_core_u8(hydro_random_context.state, 0);
++        mem_cpy(p + i * gimli_RATE, hydro_random_context.state, leftover);
++    }
++    hydro_random_ratchet();
++}
++
++void
++hydro_random_buf_deterministic(void *out, size_t out_len,
++                               const uint8_t seed[hydro_random_SEEDBYTES])
++{
++    static const uint8_t             prefix[] = { 7, 'd', 'r', 'b', 'g', '2', '5', '6' };
++    _hydro_attr_aligned_(16) uint8_t state[gimli_BLOCKBYTES];
++    uint8_t                         *p = (uint8_t *) out;
++    size_t                           i;
++    size_t                           leftover;
++
++    mem_zero(state, gimli_BLOCKBYTES);
++    COMPILER_ASSERT(sizeof prefix + 8 <= gimli_RATE);
++    memcpy(state, prefix, sizeof prefix);
++    STORE64_LE(state + sizeof prefix, (uint64_t) out_len);
++    gimli_core_u8(state, 1);
++    COMPILER_ASSERT(hydro_random_SEEDBYTES == gimli_RATE * 2);
++    mem_xor(state, seed, gimli_RATE);
++    gimli_core_u8(state, 2);
++    mem_xor(state, seed + gimli_RATE, gimli_RATE);
++    gimli_core_u8(state, 2);
++    for (i = 0; i < out_len / gimli_RATE; i++) {
++        gimli_core_u8(state, 0);
++        memcpy(p + i * gimli_RATE, state, gimli_RATE);
++    }
++    leftover = out_len % gimli_RATE;
++    if (leftover != 0) {
++        gimli_core_u8(state, 0);
++        mem_cpy(p + i * gimli_RATE, state, leftover);
++    }
++}
++
++void
++hydro_random_reseed(void)
++{
++    hydro_random_context.initialized = 0;
++    hydro_random_ensure_initialized();
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/random/unix.h b/source/texk/web2c/luatexdir/libhydrogen/random/unix.h
+new file mode 100644
+index 000000000..7744d843c
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/random/unix.h
+@@ -0,0 +1,85 @@
++#include <errno.h>
++#include <fcntl.h>
++#ifdef __linux__
++#    include <poll.h>
++#endif
++#include <sys/types.h>
++#include <unistd.h>
++
++#ifdef __linux__
++static int
++hydro_random_block_on_dev_random(void)
++{
++    struct pollfd pfd;
++    int           fd;
++    int           pret;
++
++    fd = open("/dev/random", O_RDONLY);
++    if (fd == -1) {
++        return 0;
++    }
++    pfd.fd      = fd;
++    pfd.events  = POLLIN;
++    pfd.revents = 0;
++    do {
++        pret = poll(&pfd, 1, -1);
++    } while (pret < 0 && (errno == EINTR || errno == EAGAIN));
++    if (pret != 1) {
++        (void) close(fd);
++        errno = EIO;
++        return -1;
++    }
++    return close(fd);
++}
++#endif
++
++static ssize_t
++hydro_random_safe_read(const int fd, void *const buf_, size_t len)
++{
++    unsigned char *buf = (unsigned char *) buf_;
++    ssize_t        readnb;
++
++    do {
++        while ((readnb = read(fd, buf, len)) < (ssize_t) 0 && (errno == EINTR || errno == EAGAIN)) {
++        }
++        if (readnb < (ssize_t) 0) {
++            return readnb;
++        }
++        if (readnb == (ssize_t) 0) {
++            break;
++        }
++        len -= (size_t) readnb;
++        buf += readnb;
++    } while (len > (ssize_t) 0);
++
++    return (ssize_t) (buf - (unsigned char *) buf_);
++}
++
++static int
++hydro_random_init(void)
++{
++    uint8_t tmp[gimli_BLOCKBYTES + 8];
++    int     fd;
++    int     ret = -1;
++
++#ifdef __linux__
++    if (hydro_random_block_on_dev_random() != 0) {
++        return -1;
++    }
++#endif
++    do {
++        fd = open("/dev/urandom", O_RDONLY);
++        if (fd == -1 && errno != EINTR) {
++            return -1;
++        }
++    } while (fd == -1);
++    if (hydro_random_safe_read(fd, tmp, sizeof tmp) == (ssize_t) sizeof tmp) {
++        memcpy(hydro_random_context.state, tmp, gimli_BLOCKBYTES);
++        memcpy(&hydro_random_context.counter, tmp + gimli_BLOCKBYTES, 8);
++        hydro_memzero(tmp, sizeof tmp);
++        ret = 0;
++    }
++    ret |= close(fd);
++
++    return ret;
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/random/wasi.h b/source/texk/web2c/luatexdir/libhydrogen/random/wasi.h
+new file mode 100644
+index 000000000..172e0e2d9
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/random/wasi.h
+@@ -0,0 +1,12 @@
++#include <unistd.h>
++
++static int
++hydro_random_init(void)
++{
++    if (getentropy(hydro_random_context.state, sizeof hydro_random_context.state) != 0) {
++        return -1;
++    }
++    hydro_random_context.counter = ~LOAD64_LE(hydro_random_context.state);
++
++    return 0;
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/random/windows.h b/source/texk/web2c/luatexdir/libhydrogen/random/windows.h
+new file mode 100644
+index 000000000..32a6721c8
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/random/windows.h
+@@ -0,0 +1,20 @@
++#include <windows.h>
++#define RtlGenRandom SystemFunction036
++#if defined(__cplusplus)
++extern "C"
++#endif
++    BOOLEAN NTAPI
++    RtlGenRandom(PVOID RandomBuffer, ULONG RandomBufferLength);
++#pragma comment(lib, "advapi32.lib")
++
++static int
++hydro_random_init(void)
++{
++    if (!RtlGenRandom((PVOID) hydro_random_context.state,
++                      (ULONG) sizeof hydro_random_context.state)) {
++        return -1;
++    }
++    hydro_random_context.counter = ~LOAD64_LE(hydro_random_context.state);
++
++    return 0;
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/sign.h b/source/texk/web2c/luatexdir/libhydrogen/sign.h
+new file mode 100644
+index 000000000..0b21a8aef
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/sign.h
+@@ -0,0 +1,207 @@
++#define hydro_sign_CHALLENGEBYTES 32
++#define hydro_sign_NONCEBYTES     32
++#define hydro_sign_PREHASHBYTES   64
++
++static void
++hydro_sign_p2(uint8_t sig[hydro_x25519_BYTES], const uint8_t challenge[hydro_sign_CHALLENGEBYTES],
++              const uint8_t eph_sk[hydro_x25519_BYTES], const uint8_t sk[hydro_x25519_BYTES])
++{
++    hydro_x25519_scalar_t scalar1, scalar2, scalar3;
++
++    COMPILER_ASSERT(hydro_sign_CHALLENGEBYTES == hydro_x25519_BYTES);
++    hydro_x25519_swapin(scalar1, eph_sk);
++    hydro_x25519_swapin(scalar2, sk);
++    hydro_x25519_swapin(scalar3, challenge);
++    hydro_x25519_sc_montmul(scalar1, scalar2, scalar3);
++    mem_zero(scalar2, sizeof scalar2);
++    hydro_x25519_sc_montmul(scalar2, scalar1, hydro_x25519_sc_r2);
++    hydro_x25519_swapout(sig, scalar2);
++}
++
++static void
++hydro_sign_challenge(uint8_t       challenge[hydro_sign_CHALLENGEBYTES],
++                     const uint8_t nonce[hydro_sign_NONCEBYTES],
++                     const uint8_t pk[hydro_sign_PUBLICKEYBYTES],
++                     const uint8_t prehash[hydro_sign_PREHASHBYTES])
++{
++    hydro_hash_state st;
++
++    hydro_hash_init(&st, (const char *) zero, NULL);
++    hydro_hash_update(&st, nonce, hydro_sign_NONCEBYTES);
++    hydro_hash_update(&st, pk, hydro_sign_PUBLICKEYBYTES);
++    hydro_hash_update(&st, prehash, hydro_sign_PREHASHBYTES);
++    hydro_hash_final(&st, challenge, hydro_sign_CHALLENGEBYTES);
++}
++
++static int
++hydro_sign_prehash(uint8_t csig[hydro_sign_BYTES], const uint8_t prehash[hydro_sign_PREHASHBYTES],
++                   const uint8_t sk[hydro_sign_SECRETKEYBYTES])
++{
++    hydro_hash_state st;
++    uint8_t          challenge[hydro_sign_CHALLENGEBYTES];
++    const uint8_t   *pk     = &sk[hydro_x25519_SECRETKEYBYTES];
++    uint8_t         *nonce  = &csig[0];
++    uint8_t         *sig    = &csig[hydro_sign_NONCEBYTES];
++    uint8_t         *eph_sk = sig;
++
++    hydro_random_buf(eph_sk, hydro_x25519_SECRETKEYBYTES);
++    COMPILER_ASSERT(hydro_x25519_SECRETKEYBYTES == hydro_hash_KEYBYTES);
++    hydro_hash_init(&st, (const char *) zero, sk);
++    hydro_hash_update(&st, eph_sk, hydro_x25519_SECRETKEYBYTES);
++    hydro_hash_update(&st, prehash, hydro_sign_PREHASHBYTES);
++    hydro_hash_final(&st, eph_sk, hydro_x25519_SECRETKEYBYTES);
++
++    hydro_x25519_scalarmult_base_uniform(nonce, eph_sk);
++    hydro_sign_challenge(challenge, nonce, pk, prehash);
++
++    COMPILER_ASSERT(hydro_sign_BYTES == hydro_sign_NONCEBYTES + hydro_x25519_SECRETKEYBYTES);
++    COMPILER_ASSERT(hydro_x25519_SECRETKEYBYTES <= hydro_sign_CHALLENGEBYTES);
++    hydro_sign_p2(sig, challenge, eph_sk, sk);
++
++    return 0;
++}
++
++static int
++hydro_sign_verify_core(hydro_x25519_fe xs[5], const hydro_x25519_limb_t *other1,
++                       const uint8_t other2[hydro_x25519_BYTES])
++{
++    hydro_x25519_limb_t      *z2 = xs[1], *x3 = xs[2], *z3 = xs[3];
++    hydro_x25519_fe           xo2;
++    const hydro_x25519_limb_t sixteen = 16;
++
++    hydro_x25519_swapin(xo2, other2);
++    memcpy(x3, other1, 2 * sizeof(hydro_x25519_fe));
++    hydro_x25519_ladder_part1(xs);
++
++    /* Here z2 = t2^2 */
++    hydro_x25519_mul1(z2, other1);
++    hydro_x25519_mul1(z2, other1 + hydro_x25519_NLIMBS);
++    hydro_x25519_mul1(z2, xo2);
++
++    hydro_x25519_mul(z2, z2, &sixteen, 1);
++
++    hydro_x25519_mul1(z3, xo2);
++    hydro_x25519_sub(z3, z3, x3);
++    hydro_x25519_sqr1(z3);
++
++    /* check equality */
++    hydro_x25519_sub(z3, z3, z2);
++
++    /* canon(z2): both sides are zero. canon(z3): the two sides are equal. */
++    /* Reject sigs where both sides are zero. */
++    return hydro_x25519_canon(z2) | ~hydro_x25519_canon(z3);
++}
++
++static int
++hydro_sign_verify_p2(const uint8_t sig[hydro_x25519_BYTES],
++                     const uint8_t challenge[hydro_sign_CHALLENGEBYTES],
++                     const uint8_t nonce[hydro_sign_NONCEBYTES],
++                     const uint8_t pk[hydro_x25519_BYTES])
++{
++    hydro_x25519_fe xs[7];
++
++    hydro_x25519_core(xs, challenge, pk, 0);
++    hydro_x25519_core(xs + 2, sig, hydro_x25519_BASE_POINT, 0);
++
++    return hydro_sign_verify_core(xs + 2, xs[0], nonce);
++}
++
++static int
++hydro_sign_verify_challenge(const uint8_t csig[hydro_sign_BYTES],
++                            const uint8_t challenge[hydro_sign_CHALLENGEBYTES],
++                            const uint8_t pk[hydro_sign_PUBLICKEYBYTES])
++{
++    const uint8_t *nonce = &csig[0];
++    const uint8_t *sig   = &csig[hydro_sign_NONCEBYTES];
++
++    return hydro_sign_verify_p2(sig, challenge, nonce, pk);
++}
++
++void
++hydro_sign_keygen(hydro_sign_keypair *kp)
++{
++    uint8_t *pk_copy = &kp->sk[hydro_x25519_SECRETKEYBYTES];
++
++    COMPILER_ASSERT(hydro_sign_SECRETKEYBYTES ==
++                    hydro_x25519_SECRETKEYBYTES + hydro_x25519_PUBLICKEYBYTES);
++    COMPILER_ASSERT(hydro_sign_PUBLICKEYBYTES == hydro_x25519_PUBLICKEYBYTES);
++    hydro_random_buf(kp->sk, hydro_x25519_SECRETKEYBYTES);
++    hydro_x25519_scalarmult_base_uniform(kp->pk, kp->sk);
++    memcpy(pk_copy, kp->pk, hydro_x25519_PUBLICKEYBYTES);
++}
++
++void
++hydro_sign_keygen_deterministic(hydro_sign_keypair *kp, const uint8_t seed[hydro_sign_SEEDBYTES])
++{
++    uint8_t *pk_copy = &kp->sk[hydro_x25519_SECRETKEYBYTES];
++
++    COMPILER_ASSERT(hydro_sign_SEEDBYTES >= hydro_random_SEEDBYTES);
++    hydro_random_buf_deterministic(kp->sk, hydro_x25519_SECRETKEYBYTES, seed);
++    hydro_x25519_scalarmult_base_uniform(kp->pk, kp->sk);
++    memcpy(pk_copy, kp->pk, hydro_x25519_PUBLICKEYBYTES);
++}
++
++int
++hydro_sign_init(hydro_sign_state *state, const char ctx[hydro_sign_CONTEXTBYTES])
++{
++    return hydro_hash_init(&state->hash_st, ctx, NULL);
++}
++
++int
++hydro_sign_update(hydro_sign_state *state, const void *m_, size_t mlen)
++{
++    return hydro_hash_update(&state->hash_st, m_, mlen);
++}
++
++int
++hydro_sign_final_create(hydro_sign_state *state, uint8_t csig[hydro_sign_BYTES],
++                        const uint8_t sk[hydro_sign_SECRETKEYBYTES])
++{
++    uint8_t prehash[hydro_sign_PREHASHBYTES];
++
++    hydro_hash_final(&state->hash_st, prehash, sizeof prehash);
++
++    return hydro_sign_prehash(csig, prehash, sk);
++}
++
++int
++hydro_sign_final_verify(hydro_sign_state *state, const uint8_t csig[hydro_sign_BYTES],
++                        const uint8_t pk[hydro_sign_PUBLICKEYBYTES])
++{
++    uint8_t        challenge[hydro_sign_CHALLENGEBYTES];
++    uint8_t        prehash[hydro_sign_PREHASHBYTES];
++    const uint8_t *nonce = &csig[0];
++
++    hydro_hash_final(&state->hash_st, prehash, sizeof prehash);
++    hydro_sign_challenge(challenge, nonce, pk, prehash);
++
++    return hydro_sign_verify_challenge(csig, challenge, pk);
++}
++
++int
++hydro_sign_create(uint8_t csig[hydro_sign_BYTES], const void *m_, size_t mlen,
++                  const char    ctx[hydro_sign_CONTEXTBYTES],
++                  const uint8_t sk[hydro_sign_SECRETKEYBYTES])
++{
++    hydro_sign_state st;
++
++    if (hydro_sign_init(&st, ctx) != 0 || hydro_sign_update(&st, m_, mlen) != 0 ||
++        hydro_sign_final_create(&st, csig, sk) != 0) {
++        return -1;
++    }
++    return 0;
++}
++
++int
++hydro_sign_verify(const uint8_t csig[hydro_sign_BYTES], const void *m_, size_t mlen,
++                  const char    ctx[hydro_sign_CONTEXTBYTES],
++                  const uint8_t pk[hydro_sign_PUBLICKEYBYTES])
++{
++    hydro_sign_state st;
++
++    if (hydro_sign_init(&st, ctx) != 0 || hydro_sign_update(&st, m_, mlen) != 0 ||
++        hydro_sign_final_verify(&st, csig, pk) != 0) {
++        return -1;
++    }
++    return 0;
++}
+diff --git a/source/texk/web2c/luatexdir/libhydrogen/x25519.h b/source/texk/web2c/luatexdir/libhydrogen/x25519.h
+new file mode 100644
+index 000000000..0fe958624
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/libhydrogen/x25519.h
+@@ -0,0 +1,386 @@
++/*
++ * Based on Michael Hamburg's STROBE reference implementation.
++ * Copyright (c) 2015-2016 Cryptography Research, Inc.
++ * MIT License (MIT)
++ */
++
++#if defined(__GNUC__) && defined(__SIZEOF_INT128__)
++#    define hydro_x25519_WBITS 64
++#else
++#    define hydro_x25519_WBITS 32
++#endif
++
++#if hydro_x25519_WBITS == 64
++typedef uint64_t    hydro_x25519_limb_t;
++typedef __uint128_t hydro_x25519_dlimb_t;
++typedef __int128_t  hydro_x25519_sdlimb_t;
++#    define hydro_x25519_eswap_limb(X) LOAD64_LE((const uint8_t *) &(X))
++#    define hydro_x25519_LIMB(x)       x##ull
++#elif hydro_x25519_WBITS == 32
++typedef uint32_t hydro_x25519_limb_t;
++typedef uint64_t hydro_x25519_dlimb_t;
++typedef int64_t  hydro_x25519_sdlimb_t;
++#    define hydro_x25519_eswap_limb(X) LOAD32_LE((const uint8_t *) &(X))
++#    define hydro_x25519_LIMB(x)       (uint32_t)(x##ull), (uint32_t) ((x##ull) >> 32)
++#else
++#    error "Need to know hydro_x25519_WBITS"
++#endif
++
++#define hydro_x25519_NLIMBS (256 / hydro_x25519_WBITS)
++typedef hydro_x25519_limb_t hydro_x25519_fe[hydro_x25519_NLIMBS];
++
++typedef hydro_x25519_limb_t hydro_x25519_scalar_t[hydro_x25519_NLIMBS];
++
++static const hydro_x25519_limb_t hydro_x25519_MONTGOMERY_FACTOR =
++    (hydro_x25519_limb_t) 0xd2b51da312547e1bull;
++
++static const hydro_x25519_scalar_t hydro_x25519_sc_p = { hydro_x25519_LIMB(0x5812631a5cf5d3ed),
++                                                         hydro_x25519_LIMB(0x14def9dea2f79cd6),
++                                                         hydro_x25519_LIMB(0x0000000000000000),
++                                                         hydro_x25519_LIMB(0x1000000000000000) };
++
++static const hydro_x25519_scalar_t hydro_x25519_sc_r2 = { hydro_x25519_LIMB(0xa40611e3449c0f01),
++                                                          hydro_x25519_LIMB(0xd00e1ba768859347),
++                                                          hydro_x25519_LIMB(0xceec73d217f5be65),
++                                                          hydro_x25519_LIMB(0x0399411b7c309a3d) };
++
++static const uint8_t hydro_x25519_BASE_POINT[hydro_x25519_BYTES] = { 9 };
++
++static const hydro_x25519_limb_t hydro_x25519_a24[1] = { 121665 };
++
++static inline hydro_x25519_limb_t
++hydro_x25519_umaal(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc, hydro_x25519_limb_t mand,
++                   hydro_x25519_limb_t mier)
++{
++    hydro_x25519_dlimb_t tmp = (hydro_x25519_dlimb_t) mand * mier + acc + *carry;
++
++    *carry = tmp >> hydro_x25519_WBITS;
++    return (hydro_x25519_limb_t) tmp;
++}
++
++static inline hydro_x25519_limb_t
++hydro_x25519_adc(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc, hydro_x25519_limb_t mand)
++{
++    hydro_x25519_dlimb_t total = (hydro_x25519_dlimb_t) *carry + acc + mand;
++
++    *carry = total >> hydro_x25519_WBITS;
++    return (hydro_x25519_limb_t) total;
++}
++
++static inline hydro_x25519_limb_t
++hydro_x25519_adc0(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc)
++{
++    hydro_x25519_dlimb_t total = (hydro_x25519_dlimb_t) *carry + acc;
++
++    *carry = total >> hydro_x25519_WBITS;
++    return (hydro_x25519_limb_t) total;
++}
++
++static void
++hydro_x25519_propagate(hydro_x25519_fe x, hydro_x25519_limb_t over)
++{
++    hydro_x25519_limb_t carry;
++    int                 i;
++
++    over = x[hydro_x25519_NLIMBS - 1] >> (hydro_x25519_WBITS - 1) | over << 1;
++    x[hydro_x25519_NLIMBS - 1] &= ~((hydro_x25519_limb_t) 1 << (hydro_x25519_WBITS - 1));
++    carry = over * 19;
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        x[i] = hydro_x25519_adc0(&carry, x[i]);
++    }
++}
++
++static void
++hydro_x25519_add(hydro_x25519_fe out, const hydro_x25519_fe a, const hydro_x25519_fe b)
++{
++    hydro_x25519_limb_t carry = 0;
++    int                 i;
++
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        out[i] = hydro_x25519_adc(&carry, a[i], b[i]);
++    }
++    hydro_x25519_propagate(out, carry);
++}
++
++static void
++hydro_x25519_sub(hydro_x25519_fe out, const hydro_x25519_fe a, const hydro_x25519_fe b)
++{
++    hydro_x25519_sdlimb_t carry = -76;
++    int                   i;
++
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        out[i] = (hydro_x25519_limb_t) (carry = carry + a[i] - b[i]);
++        carry >>= hydro_x25519_WBITS;
++    }
++    hydro_x25519_propagate(out, (hydro_x25519_limb_t) (2 + carry));
++}
++
++static void
++hydro_x25519_swapin(hydro_x25519_limb_t *x, const uint8_t *in)
++{
++    int i;
++
++    memcpy(x, in, sizeof(hydro_x25519_fe));
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        x[i] = hydro_x25519_eswap_limb(x[i]);
++    }
++}
++
++static void
++hydro_x25519_swapout(uint8_t *out, hydro_x25519_limb_t *x)
++{
++    int i;
++
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        x[i] = hydro_x25519_eswap_limb(x[i]);
++    }
++    memcpy(out, x, sizeof(hydro_x25519_fe));
++}
++
++static void
++hydro_x25519_mul(hydro_x25519_fe out, const hydro_x25519_fe a, const hydro_x25519_limb_t b[],
++                 const int nb)
++{
++    hydro_x25519_limb_t accum[2 * hydro_x25519_NLIMBS] = { 0 };
++    hydro_x25519_limb_t carry2;
++    int                 i, j;
++
++    for (i = 0; i < nb; i++) {
++        hydro_x25519_limb_t mand = b[i];
++        carry2                   = 0;
++
++        for (j = 0; j < hydro_x25519_NLIMBS; j++) {
++            accum[i + j] = hydro_x25519_umaal(&carry2, accum[i + j], mand, a[j]);
++        }
++        accum[i + j] = carry2;
++    }
++    carry2 = 0;
++    for (j = 0; j < hydro_x25519_NLIMBS; j++) {
++        const hydro_x25519_limb_t mand = 38;
++
++        out[j] = hydro_x25519_umaal(&carry2, accum[j], mand, accum[j + hydro_x25519_NLIMBS]);
++    }
++    hydro_x25519_propagate(out, carry2);
++}
++
++static void
++hydro_x25519_sqr(hydro_x25519_fe out, const hydro_x25519_fe a)
++{
++    hydro_x25519_mul(out, a, a, hydro_x25519_NLIMBS);
++}
++
++static void
++hydro_x25519_mul1(hydro_x25519_fe out, const hydro_x25519_fe a)
++{
++    hydro_x25519_mul(out, a, out, hydro_x25519_NLIMBS);
++}
++
++static void
++hydro_x25519_sqr1(hydro_x25519_fe a)
++{
++    hydro_x25519_mul1(a, a);
++}
++
++static void
++hydro_x25519_condswap(hydro_x25519_limb_t a[2 * hydro_x25519_NLIMBS],
++                      hydro_x25519_limb_t b[2 * hydro_x25519_NLIMBS], hydro_x25519_limb_t doswap)
++{
++    int i;
++
++    for (i = 0; i < 2 * hydro_x25519_NLIMBS; i++) {
++        hydro_x25519_limb_t xorv = (a[i] ^ b[i]) & doswap;
++        a[i] ^= xorv;
++        b[i] ^= xorv;
++    }
++}
++
++static int
++hydro_x25519_canon(hydro_x25519_fe x)
++{
++    hydro_x25519_sdlimb_t carry;
++    hydro_x25519_limb_t   carry0 = 19;
++    hydro_x25519_limb_t   res;
++    int                   i;
++
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        x[i] = hydro_x25519_adc0(&carry0, x[i]);
++    }
++    hydro_x25519_propagate(x, carry0);
++    carry = -19;
++    res   = 0;
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        res |= x[i] = (hydro_x25519_limb_t) (carry += x[i]);
++        carry >>= hydro_x25519_WBITS;
++    }
++    return ((hydro_x25519_dlimb_t) res - 1) >> hydro_x25519_WBITS;
++}
++
++static void
++hydro_x25519_ladder_part1(hydro_x25519_fe xs[5])
++{
++    hydro_x25519_limb_t *x2 = xs[0], *z2 = xs[1], *x3 = xs[2], *z3 = xs[3], *t1 = xs[4];
++
++    hydro_x25519_add(t1, x2, z2); // t1 = A
++    hydro_x25519_sub(z2, x2, z2); // z2 = B
++    hydro_x25519_add(x2, x3, z3); // x2 = C
++    hydro_x25519_sub(z3, x3, z3); // z3 = D
++    hydro_x25519_mul1(z3, t1); // z3 = DA
++    hydro_x25519_mul1(x2, z2); // x3 = BC
++    hydro_x25519_add(x3, z3, x2); // x3 = DA+CB
++    hydro_x25519_sub(z3, z3, x2); // z3 = DA-CB
++    hydro_x25519_sqr1(t1); // t1 = AA
++    hydro_x25519_sqr1(z2); // z2 = BB
++    hydro_x25519_sub(x2, t1, z2); // x2 = E = AA-BB
++    hydro_x25519_mul(z2, x2, hydro_x25519_a24, // z2 = E*a24
++                     sizeof(hydro_x25519_a24) / sizeof(hydro_x25519_a24[0]));
++    hydro_x25519_add(z2, z2, t1); // z2 = E*a24 + AA
++}
++
++static void
++hydro_x25519_ladder_part2(hydro_x25519_fe xs[5], const hydro_x25519_fe x1)
++{
++    hydro_x25519_limb_t *x2 = xs[0], *z2 = xs[1], *x3 = xs[2], *z3 = xs[3], *t1 = xs[4];
++
++    hydro_x25519_sqr1(z3); // z3 = (DA-CB)^2
++    hydro_x25519_mul1(z3, x1); // z3 = x1 * (DA-CB)^2
++    hydro_x25519_sqr1(x3); // x3 = (DA+CB)^2
++    hydro_x25519_mul1(z2, x2); // z2 = AA*(E*a24+AA)
++    hydro_x25519_sub(x2, t1, x2); // x2 = BB again
++    hydro_x25519_mul1(x2, t1); // x2 = AA*BB
++}
++
++static void
++hydro_x25519_core(hydro_x25519_fe xs[5], const uint8_t scalar[hydro_x25519_BYTES],
++                  const uint8_t *x1, bool clamp)
++{
++    hydro_x25519_limb_t  swap;
++    hydro_x25519_limb_t *x2 = xs[0], *x3 = xs[2], *z3 = xs[3];
++    hydro_x25519_fe      x1i;
++    int                  i;
++
++    hydro_x25519_swapin(x1i, x1);
++    x1   = (const uint8_t *) x1i;
++    swap = 0;
++    mem_zero(xs, 4 * sizeof(hydro_x25519_fe));
++    x2[0] = z3[0] = 1;
++    memcpy(x3, x1, sizeof(hydro_x25519_fe));
++    for (i = 255; i >= 0; i--) {
++        uint8_t             bytei = scalar[i / 8];
++        hydro_x25519_limb_t doswap;
++        hydro_x25519_fe     x1_dup;
++
++        if (clamp) {
++            if (i / 8 == 0) {
++                bytei &= ~7;
++            } else if (i / 8 == hydro_x25519_BYTES - 1) {
++                bytei &= 0x7F;
++                bytei |= 0x40;
++            }
++        }
++        doswap = 1U + ~(hydro_x25519_limb_t) ((bytei >> (i % 8)) & 1);
++        hydro_x25519_condswap(x2, x3, swap ^ doswap);
++        swap = doswap;
++        hydro_x25519_ladder_part1(xs);
++        memcpy(x1_dup, x1, sizeof x1_dup);
++        hydro_x25519_ladder_part2(xs, x1_dup);
++    }
++    hydro_x25519_condswap(x2, x3, swap);
++}
++
++static int
++hydro_x25519_scalarmult(uint8_t       out[hydro_x25519_BYTES],
++                        const uint8_t scalar[hydro_x25519_SECRETKEYBYTES],
++                        const uint8_t x1[hydro_x25519_PUBLICKEYBYTES], bool clamp)
++{
++    hydro_x25519_fe      xs[5];
++    hydro_x25519_limb_t *x2, *z2, *z3;
++    hydro_x25519_limb_t *prev;
++    int                  i;
++    int                  ret;
++
++    hydro_x25519_core(xs, scalar, x1, clamp);
++
++    /* Precomputed inversion chain */
++    x2   = xs[0];
++    z2   = xs[1];
++    z3   = xs[3];
++    prev = z2;
++
++    /* Raise to the p-2 = 0x7f..ffeb */
++    for (i = 253; i >= 0; i--) {
++        hydro_x25519_sqr(z3, prev);
++        prev = z3;
++        if (i >= 8 || (0xeb >> i & 1)) {
++            hydro_x25519_mul1(z3, z2);
++        }
++    }
++
++    /* Here prev = z3 */
++    /* x2 /= z2 */
++    hydro_x25519_mul1(x2, z3);
++    ret = hydro_x25519_canon(x2);
++    hydro_x25519_swapout(out, x2);
++
++    if (clamp == 0) {
++        return 0;
++    }
++    return ret;
++}
++
++static inline int
++hydro_x25519_scalarmult_base(uint8_t       pk[hydro_x25519_PUBLICKEYBYTES],
++                             const uint8_t sk[hydro_x25519_SECRETKEYBYTES])
++{
++    return hydro_x25519_scalarmult(pk, sk, hydro_x25519_BASE_POINT, 1);
++}
++
++static inline void
++hydro_x25519_scalarmult_base_uniform(uint8_t       pk[hydro_x25519_PUBLICKEYBYTES],
++                                     const uint8_t sk[hydro_x25519_SECRETKEYBYTES])
++{
++    if (hydro_x25519_scalarmult(pk, sk, hydro_x25519_BASE_POINT, 0) != 0) {
++        abort();
++    }
++}
++
++static void
++hydro_x25519_sc_montmul(hydro_x25519_scalar_t out, const hydro_x25519_scalar_t a,
++                        const hydro_x25519_scalar_t b)
++{
++    hydro_x25519_limb_t hic = 0;
++    int                 i, j;
++
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        hydro_x25519_limb_t carry = 0, carry2 = 0, mand = a[i],
++                            mand2 = hydro_x25519_MONTGOMERY_FACTOR;
++
++        for (j = 0; j < hydro_x25519_NLIMBS; j++) {
++            hydro_x25519_limb_t acc = out[j];
++
++            acc = hydro_x25519_umaal(&carry, acc, mand, b[j]);
++            if (j == 0) {
++                mand2 *= acc;
++            }
++            acc = hydro_x25519_umaal(&carry2, acc, mand2, hydro_x25519_sc_p[j]);
++            if (j > 0) {
++                out[j - 1] = acc;
++            }
++        }
++
++        /* Add two carry registers and high carry */
++        out[hydro_x25519_NLIMBS - 1] = hydro_x25519_adc(&hic, carry, carry2);
++    }
++
++    /* Reduce */
++    hydro_x25519_sdlimb_t scarry = 0;
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        out[i] = (hydro_x25519_limb_t) (scarry = scarry + out[i] - hydro_x25519_sc_p[i]);
++        scarry >>= hydro_x25519_WBITS;
++    }
++    hydro_x25519_limb_t need_add = (hydro_x25519_limb_t) - (scarry + hic);
++
++    hydro_x25519_limb_t carry = 0;
++    for (i = 0; i < hydro_x25519_NLIMBS; i++) {
++        out[i] = hydro_x25519_umaal(&carry, out[i], need_add, hydro_x25519_sc_p[i]);
++    }
++}
+diff --git a/source/texk/web2c/luatexdir/lua/lhydrogenlib.c b/source/texk/web2c/luatexdir/lua/lhydrogenlib.c
+new file mode 100644
+index 000000000..b2166080b
+--- /dev/null
++++ b/source/texk/web2c/luatexdir/lua/lhydrogenlib.c
+@@ -0,0 +1,327 @@
++/* lhydrogenlib.c
++
++   Copyright 2026 Max Chernoff <tex@maxchernoff.ca>
++
++   This file is part of LuaTeX.
++
++   LuaTeX is free software; you can redistribute it and/or modify it under
++   the terms of the GNU General Public License as published by the Free
++   Software Foundation; either version 2 of the License, or (at your
++   option) any later version.
++
++   LuaTeX is distributed in the hope that it will be useful, but WITHOUT
++   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
++   License for more details.
++
++   You should have received a copy of the GNU General Public License along
++   with LuaTeX; if not, see <http://www.gnu.org/licenses/>. */
++
++// Just treat libhydrogen as a header-only library, since it makes the
++// compilation process simpler and the functions are only ever used in this
++// file. Note: this fails if you use '#include "ptexlib.h"' before it.
++#include "libhydrogen/hydrogen.c"
++
++#include "lua/luatex-api.h"
++#include "kpathsea/xmalloc.c"
++
++// Helper macro to get a Lua string argument as a uint8_t pointer and length.
++// This is needed because libhydrogen expects uint8_t arrays as input, but Lua
++// only returns char arrays for strings. This cast might be undefined on systems
++// with non-8-bit chars, but I doubt that LuaTeX runs on such systems anyways.
++#define lua_uint8_string(idx, len) \
++    ((const uint8_t *)luaL_checklstring(L, idx, len))
++
++// Get the optional context argument, or use a default one if not provided.
++// libhydrogen requires a context for most of its functions
++//
++//     https://github.com/jedisct1/libhydrogen/wiki/Contexts
++//
++// so we'll define a helper function here to get the context from Lua if it's
++// provided, or use a default context if not.
++#define DEFAULT_CONTEXT "LuaTeX\0\0"
++
++static inline void get_context(lua_State *L, int idx,
++    char ctx [hydro_sign_CONTEXTBYTES])
++{
++    const char *ctx_str;
++    if (lua_type(L,idx) == LUA_TSTRING) {
++        size_t ctx_len;
++        ctx_str = luaL_checklstring(L, idx, &ctx_len);
++        if (ctx_str == NULL || ctx_len != hydro_sign_CONTEXTBYTES) {
++            luaL_error(L,
++                "libhydrogen: context must be a string of length %d",
++                hydro_sign_CONTEXTBYTES);
++        }
++    } else {
++        ctx_str = DEFAULT_CONTEXT;
++    }
++
++    memcpy(ctx, ctx_str, hydro_sign_CONTEXTBYTES);
++}
++
++// Signing (asymmetric/public key) functions. These are the reason that this
++// module exists, because I was unable to find any pure Lua implementations of
++// elliptic curve signing algorithms, I'm not crazy enough to implement the
++// primitives myself, and it's not easy to use an external library via luaffi
++// for this.
++
++// Generates a new keypair used for signing by using a CSPRNG.
++static int luahydro_sign_keygen(lua_State *L)
++{
++    hydro_sign_keypair kp;
++    hydro_sign_keygen(&kp);
++
++    lua_pushlstring(L, (char *)kp.pk, hydro_sign_PUBLICKEYBYTES);
++    lua_pushlstring(L, (char *)kp.sk, hydro_sign_SECRETKEYBYTES);
++
++    return 2;
++}
++
++// Create a new signature for a given message and keypair.
++static int luahydro_sign_create(lua_State *L)
++{
++    // Process the arguments
++    size_t msg_len, sk_len;
++    const uint8_t *msg = lua_uint8_string(1, &msg_len);
++    const uint8_t *sk = lua_uint8_string(2, &sk_len);
++
++    if (msg == NULL || sk == NULL) {
++        return luaL_error(L, "libhydrogen.sign_create: invalid arguments");
++    }
++
++    if (sk_len != hydro_sign_SECRETKEYBYTES) {
++        return luaL_error(L,
++            "libhydrogen.sign_create: secret key must be a string of length %d",
++            hydro_sign_SECRETKEYBYTES);
++    }
++
++    char ctx[hydro_sign_CONTEXTBYTES];
++    get_context(L, 3, ctx);
++
++    // Create the signature
++    uint8_t signature[hydro_sign_BYTES];
++    const int result = hydro_sign_create(signature, msg, msg_len, ctx, sk);
++
++    // Check for errors and return the signature as a Lua string
++    if (result != 0) {
++        return luaL_error(L,
++            "libhydrogen.sign_create: failed to create signature");
++    }
++    lua_pushlstring(L, (char *)signature, hydro_sign_BYTES);
++    return 1;
++}
++
++// Verify a signature for a given message and public key
++static int luahydro_sign_verify(lua_State *L)
++{
++    // Process the arguments
++    size_t msg_len, sig_len, pubkey_len;
++    const uint8_t *msg = lua_uint8_string(1, &msg_len);
++    const uint8_t *sig = lua_uint8_string(2, &sig_len);
++    const uint8_t *pubkey = lua_uint8_string(3, &pubkey_len);
++
++    if (msg == NULL || sig == NULL || pubkey == NULL) {
++        return luaL_error(L, "libhydrogen.sign_verify: invalid arguments");
++    }
++
++    if (sig_len != hydro_sign_BYTES) {
++        return luaL_error(L,
++            "libhydrogen.sign_verify: signature must be a string of length %d",
++            hydro_sign_BYTES);
++    }
++
++    if (pubkey_len != hydro_sign_PUBLICKEYBYTES) {
++        return luaL_error(L,
++            "libhydrogen.sign_verify: public key must be a string of length %d",
++            hydro_sign_PUBLICKEYBYTES);
++    }
++
++    char ctx[hydro_sign_CONTEXTBYTES];
++    get_context(L, 4, ctx);
++
++    // Verify the signature
++    const int result = hydro_sign_verify(sig, msg, msg_len, ctx, pubkey);
++
++    lua_pushboolean(L, result == 0);
++    return 1;
++}
++
++// Hash functions. These are somewhat redundant with the preexisting sha2
++// module, but:
++//
++// 1. libhydrogen uses them internally for the signing functions, so they come
++//    for "free" with the library.
++//
++// 2. They don't use the Merkle--Damgard construction, so unlike sha2, they
++//    are not vulnerable to length extension attacks.
++//
++// 3. They allow arbitrary output lengths, versus sha2 which only defines 3
++//    fixed output lengths (256, 384, and 512 bits).
++//
++// 4. They are purportedly faster than sha2, but this is unlikely to be relevant
++//    for LuaTeX.
++
++// Common function used by keyed and unkeyed hash functions.
++static int luahydro_hash_helper(lua_State *L, size_t msg_len,
++    const uint8_t msg[static msg_len], size_t out_len,
++    const int ctx_idx, const uint8_t key[hydro_hash_KEYBYTES])
++{
++    // Validate the arguments
++    if (out_len < hydro_hash_BYTES_MIN || out_len > hydro_hash_BYTES_MAX) {
++        return luaL_error(L,
++            "libhydrogen.hash: output length must be between %d and %d",
++            hydro_hash_BYTES_MIN, hydro_hash_BYTES_MAX);
++    }
++
++    char ctx[hydro_hash_CONTEXTBYTES];
++    get_context(L, ctx_idx, ctx);
++
++    // Hash the message
++    uint8_t *out = xmalloc(out_len);
++    const int result = hydro_hash_hash(out, out_len, msg, msg_len, ctx, key);
++
++    // Return the hash as a Lua string, or an error if hashing failed
++    if (result != 0) {
++        free(out);
++        return luaL_error(L, "libhydrogen.hash: failed to hash message");
++    }
++    lua_pushlstring(L, (char *)out, out_len);
++    free(out);
++    return 1;
++}
++
++// A basic, unkeyed hash function.
++#define DEFAULT_HASH_BYTES 32 // (256 bits)
++
++static int luahydro_hash(lua_State *L)
++{
++    // Process the arguments
++    size_t msg_len, out_len;
++    const uint8_t *msg = lua_uint8_string(1, &msg_len);
++    if (lua_gettop(L) == 1) {
++        out_len = DEFAULT_HASH_BYTES;
++    } else {
++        out_len = (size_t)luaL_checkinteger(L, 2);
++    }
++
++    if (msg == NULL) {
++        return luaL_error(L, "libhydrogen.hash: invalid message argument");
++    }
++
++    // Call the common helper function with a NULL key
++    return luahydro_hash_helper(L, msg_len, msg, out_len, 3, NULL);
++}
++
++// A keyed hash function
++static int luahydro_hash_keyed(lua_State *L)
++{
++    // Process the arguments
++    size_t msg_len, out_len, key_len;
++    const uint8_t *msg = lua_uint8_string(1, &msg_len);
++    const uint8_t *key = lua_uint8_string(2, &key_len);
++    if (lua_gettop(L) == 2) {
++        out_len = DEFAULT_HASH_BYTES;
++    } else {
++        out_len = (size_t)luaL_checkinteger(L, 3);
++    }
++
++    if (msg == NULL) {
++        return luaL_error(L, "libhydrogen.hash: invalid message argument");
++    }
++
++    if (key != NULL && key_len != hydro_hash_KEYBYTES) {
++        return luaL_error(L,
++            "libhydrogen.hash: key must be a string of length %d",
++            hydro_hash_KEYBYTES);
++    }
++
++    // Call the common helper function with a NULL key
++    return luahydro_hash_helper(L, msg_len, msg, out_len, 4, key);
++}
++
++// Generate a random key for use with the keyed hash function.
++static int luahydro_hash_keygen(lua_State *L)
++{
++    uint8_t key[hydro_hash_KEYBYTES];
++    hydro_hash_keygen(key);
++    lua_pushlstring(L, (char *)key, hydro_hash_KEYBYTES);
++    return 1;
++}
++
++// CSPRNG (cryptographically secure pseudorandom number generator). Lua's
++// built-in "math.random" function is sufficient for non-cryptographic uses, and
++// the specialized "keygen" functions provided above are sufficient for use with
++// their corresponding functions, but for completeness sake, we are also
++// exposing the other random functions provided by libhydrogen here. All of
++// these functions are cryptographically secure, and are therefore suitable
++// for generating random keys, nonces, salts, etc.
++
++#define RANDOM_BYTES_MAX (1 << 27) // (128 MiB) Arbitrary limit
++
++static int luahydro_random_bytes(lua_State *L)
++{
++    // Process the arguments
++    const size_t out_len = (size_t)luaL_checkinteger(L, 1);
++    if (out_len == 0 || out_len > RANDOM_BYTES_MAX) {
++        return luaL_error(L,
++            "libhydrogen.random_bytes: output length must be between 1 and %d",
++            RANDOM_BYTES_MAX);
++    }
++
++    // Generate the random bytes and return them as a Lua string
++    uint8_t *out = xmalloc(out_len);
++    hydro_random_buf(out, out_len);
++
++    lua_pushlstring(L, (char *)out, out_len);
++    free(out);
++    return 1;
++}
++
++static int luahydro_random_integer(lua_State *L)
++{
++    // Process the arguments
++    const uint64_t minimum = (uint64_t)luaL_checkinteger(L, 1);
++    const uint64_t maximum = (uint64_t)luaL_checkinteger(L, 2);
++
++    if (minimum > maximum) {
++        return luaL_error(L,
++            "libhydrogen.random_integer: minimum must be less than or equal to maximum");
++    }
++
++    const uint64_t range = maximum - minimum;
++    if (range > UINT32_MAX - 1) {
++        return luaL_error(L,
++            "libhydrogen.random_integer: range is too large");
++    }
++
++    // Generate a random integer in the specified range and return it as a Lua
++    // integer
++    const uint64_t result = hydro_random_uniform(range + 1) + minimum;
++    lua_pushinteger(L, (lua_Integer)result);
++    return 1;
++}
++
++// Define the table exported to Lua
++static const struct luaL_Reg hydrogenlib[] = {
++    {"sign_keygen", luahydro_sign_keygen},
++    {"sign_create", luahydro_sign_create},
++    {"sign_verify", luahydro_sign_verify},
++    {"hash",        luahydro_hash},
++    {"hash_keyed",  luahydro_hash_keyed},
++    {"hash_keygen", luahydro_hash_keygen},
++    {"random_bytes", luahydro_random_bytes},
++    {"random_integer", luahydro_random_integer},
++    {NULL, NULL} /* sentinel */
++};
++
++// Initialize the module
++int luaopen_hydrogen(lua_State * L)
++{
++    if (hydro_init() == 0) {
++        luaL_openlib(L, "libhydrogen", hydrogenlib, 0);
++    } else {
++        lua_pushnil(L);
++    }
++    return 1;
++}
+diff --git a/source/texk/web2c/luatexdir/lua/luastuff.c b/source/texk/web2c/luatexdir/lua/luastuff.c
+index 1a030715a..6bf9d5538 100644
+--- a/source/texk/web2c/luatexdir/lua/luastuff.c
++++ b/source/texk/web2c/luatexdir/lua/luastuff.c
+@@ -391,6 +391,7 @@ void luainterpreter(void)
+     luaopen_pdfe(L);
+     luaopen_pdfscanner(L);
+     luaopen_img(L);
++    luaopen_hydrogen(L);
+     lua_createtable(L, 0, 0);
+     lua_setglobal(L, "texconfig");
+     Luas = L;
+diff --git a/source/texk/web2c/luatexdir/lua/luatex-api.h b/source/texk/web2c/luatexdir/lua/luatex-api.h
+index 913a9b6b1..4e3792d68 100644
+--- a/source/texk/web2c/luatexdir/lua/luatex-api.h
++++ b/source/texk/web2c/luatexdir/lua/luatex-api.h
+@@ -176,6 +176,8 @@ extern int luaopen_node(lua_State * L);
+ extern void nodelist_to_lua(lua_State * L, int n);
+ extern int nodelist_from_lua(lua_State * L, int n);
+ 
++extern int luaopen_hydrogen(lua_State * L);
++
+ extern int dimen_to_number(lua_State * L, const char *s);
+ 
+ extern int get_command_id(const char *s);
+-- 
+2.53.0
+
