@@ -50,7 +50,7 @@ local traceback = debug.traceback
 
 --- Temporarily replaces the debug.traceback function with a function that
 --- returns its argument without a traceback.
---- @type fun(message: string):string
+--- @type fun():nil
 local without_traceback do
     local saved_traceback = debug.traceback
     local function restore_traceback(message)
