@@ -8,10 +8,13 @@ when:
 
 steps:
   - name: Build
-    image: maxchernoff.ca/tex:latest
+    image: maxchernoff.ca/tex-gcc:latest
     pull: true
     commands:
       - set -euxo pipefail
+      - pushd ./source/c/
+      - make -j4
+      - popd
       - export TEXMFHOME=$(realpath ./texmf)
       - l3build doc
       - l3build bundle
