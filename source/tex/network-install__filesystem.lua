@@ -25,7 +25,7 @@ netinst._utils.debug("filesystem subpackage loaded")
 
 local database_filename = "network-install.files.lut"
 local ctan_mirror_filename = "network-install.ctan_mirror.txt"
-local local_file_template = string.formatters["%s/%s.%06i"]
+local local_file_template = string.formatters["%s/%06i@%s"]
 local item_separator = netinst._utils.os_case {
     windows = ";",
     default = ":"
@@ -98,7 +98,7 @@ function netinst.get_local_file_path(filename, revision)
         )
     end
 
-    local path = local_file_template(cache_root, filename, revision)
+    local path = local_file_template(cache_root, revision, filename)
     if io.exists(path) then
         return true, path
     else

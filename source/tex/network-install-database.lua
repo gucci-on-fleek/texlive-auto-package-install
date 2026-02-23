@@ -22,10 +22,17 @@ netinst._utils.debug("database subpackage loaded")
 --- Constants ---
 -----------------
 
-local remote_database_path = "network-install.files.lut.gz"
-local zip_file_path = "network-install.files.zip"
 local days_to_seconds = 24 * 60 * 60
+local hash_bytes = 16
+local libhydrogen_context = "netinst1"
+local remote_database_path = "network-install.files.lut.gz"
+local signature_size_bytes = 64
+local zip_file_path = "network-install.files.zip"
 local zip_window_bits = -15
+
+local public_key = ("\z
+    1C2AE45B6F06A7393CC88BF69C8955B9CD31CCD7FEF20F17BBDF74FBB531F438\z
+"):tobytes()
 
 --- lualibs overwrites the original `load` function, but it saves it as
 --- `loadstring`, so we'll just use that directly. But then LuaLS doesn't like
@@ -39,9 +46,10 @@ local load = loadstring
 ------------------------
 
 --- @class (exact) database_entry
---- @field source   string The source of the file (as a constant)
---- @field path     string The path to the file in this source
+--- @field source   string  The source of the file (as a constant)
+--- @field path     string  The path to the file in this source
 --- @field revision integer The SVN revision of the file
+--- @field hash     string  The libhydrogen hash of the file contents
 
 --- @class (exact) database_entry.ctan: database_entry
 --- @field source   "ctan" The source of the file
@@ -175,6 +183,25 @@ local database do
             )
         end
 
+        -- Validate the signature
+        local signature = data:sub(-signature_size_bytes)
+        data = data:sub(1, -signature_size_bytes - 1)
+
+        local valid = libhydrogen.sign_verify(
+            data, signature, public_key, libhydrogen_context
+        )
+        if valid then
+            netinst._utils.debug(
+                "Successfully verified database signature: %s",
+                signature:toHEX()
+            )
+        else
+            netinst._utils.error(
+                "Failed to verify database signature: %s",
+                signature:toHEX()
+            )
+        end
+
         -- Decompress it
         data = gzip.decompress(data)
 
@@ -221,11 +248,40 @@ function netinst.get_latest_file_revision(filename)
     return entry.revision
 end
 
---- Downloads and extracts a file from a .zip archive.
+--- Validates the hash of a file's contents against the expected hash.
+---
+--- @param data string The contents of the file to validate.
+--- @param expected_hash string
+---     The expected libhydrogen hash of the file contents.
+---
+--- @param name string The name of the file being validated, for messages.
+--- @return nil
+local function validate_hash(data, expected_hash, name)
+    local calculated_hash = libhydrogen.hash(
+        data, hash_bytes, libhydrogen_context
+    )
+
+    if calculated_hash == expected_hash then
+        netinst._utils.debug(
+            "Successfully validated file hash for %s: %s",
+            name, calculated_hash:toHEX()
+        )
+    else
+        print(data)
+        netinst._utils.error(
+            "Failed to validate file hash for %s. Expected %s, got %s.",
+            name, expected_hash:toHEX(), calculated_hash:toHEX()
+        )
+    end
+end
+
+--- Downloads and decompresses a file from a .zip archive.
 ---
 --- @param offset range The byte offset of the file in the ZIP archive.
+--- @param hash string The expected libhydrogen hash of the file contents.
+--- @param name string The name of the file being downloaded, for messages.
 --- @return string data The decompressed contents of the file.
-local function download_from_zip(offset)
+local function download_from_zip(offset, hash, name)
     netinst._utils.debug(
         "Downloading file from ZIP archive at offset %d-%d.",
         offset[1], offset[2]
@@ -233,6 +289,7 @@ local function download_from_zip(offset)
 
     -- Download the range of bytes from the zip file
     local compressed = netinst._get_metafile(zip_file_path, offset)
+    validate_hash(compressed, hash, name)
 
     -- Decompress the downloaded range
     local data = zlib.decompress(compressed, zip_window_bits)
@@ -242,6 +299,19 @@ local function download_from_zip(offset)
             offset
         )
     end
+    return data
+end
+
+--- Downloads a file from CTAN and validates its hash.
+---
+--- @param path string The path to the file on CTAN, relative to the mirror URL.
+--- @param hash string The expected libhydrogen hash of the file contents.
+--- @param name string The name of the file being downloaded, for messages.
+--- @return string data The contents of the file.
+local function download_from_ctan(path, hash, name)
+    local data = netinst.ctan_get(path)
+    validate_hash(data, hash, name)
+
     return data
 end
 
@@ -266,12 +336,12 @@ function netinst.download_from_database(filename)
     -- directly.
     if entry.source == "ctan" then
         --- @cast entry database_entry.ctan
-        return netinst.ctan_get(entry.path)
+        return download_from_ctan(entry.path, entry.hash, filename)
 
     -- Otherwise, we'll need to extract it from the .zip archive.
     elseif entry.source == "zip" then
         --- @cast entry database_entry.zip
-        return download_from_zip(entry.offset)
+        return download_from_zip(entry.offset, entry.hash, filename)
     else
         netinst._utils.error(
             "Invalid source for file %s: %s",

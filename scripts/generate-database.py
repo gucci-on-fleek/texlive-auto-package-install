@@ -101,7 +101,7 @@ DEFAULT_MIRROR = "https://mirror.ctan.org"
 FILES_PATH = "/FILES.byname.gz"
 IGNORE_EXTENSIONS = {"pdf", "png", "jpg", "4ht"}
 LIBHYDROGEN_CONTEXT = b"netinst1"
-SECRET_KEY_LENGTH = 32
+SECRET_KEY_LENGTH = 64
 SIGNATURE_LENGTH = 64
 START_TIME = time()
 TLPDB_PATH = "/systems/texlive/tlnet/tlpkg/texlive.tlpdb.xz"
@@ -202,7 +202,11 @@ CTAN_IGNORE_REGEX = re_compile(
             # These files are automatically synced from
             # modules.contextgarden.net, so there can be duplicate files here
             # too.
-            macros/context/contrib
+            macros/context/contrib |
+
+            # No runtime files in here, and some of the files conflict with
+            # files in the main archive, so we'll just ignore the whole tree.
+            info
         ) /
     """,
     VERBOSE | MULTILINE,
@@ -255,14 +259,11 @@ def lua_string(s: str | bytes) -> bytes:
     """
 
     if isinstance(s, str):
-        s = s.encode("utf-8")
+        s = s.encode("ascii")
 
-    if (
-        (b'"' not in s)
-        and (b"\\" not in s)
-        and (b"\n" not in s)
-        and (b"\r" not in s)
-    ):
+    if (b"\r" in s) or (b"\n" in s):
+        return repr(s)[1:].encode("ascii")
+    elif (b'"' not in s) and (b"\\" not in s):
         return b'"' + s + b'"'
     elif (b"]]" not in s) and (not s.endswith(b"]")):
         return b"[[" + s + b"]]"
@@ -682,7 +683,7 @@ def get_zip_files(
             zip_files[filename] = ZipRow(
                 path=filename,
                 revision=revision,
-                hash=hash_message(zip_bytes[start_offset:end_offset]),
+                hash=hash_message(zip_bytes[start_offset : end_offset + 1]),
                 start_offset=start_offset,
                 end_offset=end_offset,
             )
