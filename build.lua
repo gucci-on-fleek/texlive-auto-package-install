@@ -6,7 +6,7 @@
 
 -- Initialization
 module = "texlive-auto-package-install"
-local version = "0.2.0" --%%version
+local version = "0.2.1" --%%version
 local date = "2026-02-23" --%%dashdate
 
 local orig_targets = target_list

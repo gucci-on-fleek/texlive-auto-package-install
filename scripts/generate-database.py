@@ -94,7 +94,7 @@ FileList: TypeAlias = dict[str, list[FileEntry]]
 ### Constants ###
 #################
 
-__VERSION__ = "0.1.2"  # %%version
+__VERSION__ = "0.2.1"  # %%version
 CONTEXT_LENGTH = 8
 DATABASE_FILENAME = "network-install.files.lut.gz"
 DEFAULT_MIRROR = "https://mirror.ctan.org"
