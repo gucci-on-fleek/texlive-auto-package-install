@@ -227,6 +227,7 @@ netinst._currently_loading_subpackages = true
 
 -- Load the internal subpackages
 require(pkg_name .. "__ffi")
+require(pkg_name .. "__hydrogen")
 require(pkg_name .. "__network")
 require(pkg_name .. "__filesystem")
 require(pkg_name .. "__hooks")

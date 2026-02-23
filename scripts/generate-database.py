@@ -134,7 +134,7 @@ TLPDB_FILE_REGEX = re_compile(
                     tfm | type1 | vf | afm | enc | # Type 1 fonts
                     cmap | map |  # Map files
                     opentype | truetype # OpenType and TrueType fonts
-                ) |
+                )
             ) /
 
             # Match the rest of the path
