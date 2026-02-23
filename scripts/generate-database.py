@@ -100,20 +100,33 @@ DATABASE_FILENAME = "network-install.files.lut.gz"
 DEFAULT_MIRROR = "https://mirror.ctan.org"
 FILES_PATH = "/FILES.byname.gz"
 IGNORE_EXTENSIONS = {"pdf", "png", "jpg", "4ht"}
-IGNORE_PREFIXES = {"lwarp"}
 LIBHYDROGEN_CONTEXT = b"netinst1"
 SECRET_KEY_LENGTH = 32
 SIGNATURE_LENGTH = 64
 START_TIME = time()
 TLPDB_PATH = "/systems/texlive/tlnet/tlpkg/texlive.tlpdb.xz"
 TLPDB_REVISION_REGEX = re_compile(r"^revision (\d+)\s*$", MULTILINE)
+TLPDB_PACKAGE_NAME_REGEX = re_compile(r"^name (\S+)\s*$", MULTILINE)
 ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 ZIP_LOCAL_FILE_HEADER_SIZE = 30
 ZIP_NAME = "network-install.files.zip"
-HASH_SIZE_BYTES = 16  # The minimum
+HASH_SIZE_BYTES = 16
+
+IGNORE_PACKAGES = {
+    "lwarp",  # Too many extra files
+    "00texlive.image",  # Never actually installed
+    "latex",  # Guaranteed to already be installed
+    "l3kernel",  # Bad things happen when this doesn't match the format
+}
 
 TLPDB_FILE_REGEX = re_compile(
     r"""
+        # Match the beginning of the line
+        ^
+
+        # Match a literal space
+        \ #
+
         # Only match things that look like paths in $TEXMFDIST
         (texmf-dist | RELOC ) /
 
@@ -138,11 +151,14 @@ TLPDB_FILE_REGEX = re_compile(
             ) /
 
             # Match the rest of the path
-            \S*?
+            \S+?
 
             # Match the filename
             / (?P<filename> [^ / \s ]+)
         )
+
+        # Match the end of the line
+        $
     """,
     VERBOSE | MULTILINE,
 )
@@ -414,12 +430,27 @@ def filelist_from_tlpdb(
     zip_files: FileList = {}
 
     for package in tlpdb.split("\n\n"):
+        # Check to see if we should ignore this package
+        pkg_name_match = TLPDB_PACKAGE_NAME_REGEX.search(package)
+        if pkg_name_match is None:
+            if package.strip():
+                raise ValueError(
+                    "Failed to parse package name from tlpdb file."
+                )
+            else:
+                continue
+        pkg_name = pkg_name_match.group(1)
+        if pkg_name in IGNORE_PACKAGES:
+            continue
+
+        # Get the revision of the package
         revision_match = TLPDB_REVISION_REGEX.search(package)
         if revision_match is not None:
             revision = int(revision_match.group(1))
         else:
             revision = None
 
+        # Loop over all the files
         for file_match in TLPDB_FILE_REGEX.finditer(package):
             filename = file_match.group("filename")
             path = file_match.group("path")
@@ -511,11 +542,6 @@ def get_missing_ctan_files(
         # to be included in the CTAN archive as-is.
         extension = filename.split(".")[-1]
         if extension in IGNORE_EXTENSIONS:
-            continue
-
-        # Ignore files with certain prefixes
-        prefix = filename.split("-")[0]
-        if prefix in IGNORE_PREFIXES:
             continue
 
         # Now, get the FileEntry objects for this file
