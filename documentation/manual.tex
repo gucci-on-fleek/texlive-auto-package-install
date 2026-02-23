@@ -51,9 +51,9 @@ packages from \TeX{}~Live when compiling documents.
 When compiling a \LaTeX{} document, if any files are missing from your
 \TeX{}~Live installation, this package will automatically download and install
 them. To do so, make sure to put
-\typ[option=TEX]{\RequirePackage{auto-package-install}} as the very first line
-of your document preamble. Make sure to compile with \typ{--socket} (or
-\typ{--shell-escape}), otherwise the package won't work.
+\typ[option=TEX]{\RequirePackage{network-install}} as the very first line of
+your document preamble. Make sure to compile with \typ{--shell-escape},
+otherwise the package won't work.
 
 \section{Demonstration}
 
@@ -99,13 +99,26 @@ If want to offer any improvements to the code below, please open an issue or a
     continue=yes,
 ]
 
-\subsection{auto-package-install.lua}
+\define[1]\TypeLuaFile{%
+    \subsection{#1.lua}
+    \typeLUAfile{../source/tex/#1.lua}
+}
 
-\typeLUAfile{../source/auto-package-install.lua}
+\subsection{network-install.sty}
+\typeTEXfile{../source/tex/network-install.sty}
 
-\subsection{auto-package-install.sty}
+\TypeLuaFile{network-install}
+\TypeLuaFile{network-install__ffi}
+\TypeLuaFile{network-install__hydrogen}
+\TypeLuaFile{network-install__network}
+\TypeLuaFile{network-install__filesystem}
+\TypeLuaFile{network-install__hooks}
+\TypeLuaFile{network-install-ctan}
+\TypeLuaFile{network-install-database}
+\TypeLuaFile{network-install-files}
 
-\typeTEXfile{../source/auto-package-install.sty}
+\subsection{lhydrogenlib.c}
+\typeCPPfile{../source/c/lhydrogenlib.c}
 
 \vfill\penalty10000
 \startalignment[flushright]

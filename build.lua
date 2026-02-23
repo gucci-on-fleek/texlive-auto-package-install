@@ -17,7 +17,7 @@ target_list.tag = orig_targets.tag
 tagfiles = {
     "source/*.*",
     "scripts/*.*",
-    "docs/**/*.*",
+    "documentation/*.*",
     "README.md",
     "build.lua",
 }

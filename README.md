@@ -17,9 +17,9 @@ Usage
 When compiling a LaTeX document, if any files are missing from your
 TeX Live installation, this package will automatically download and
 install them. To do so, make sure to put
-`\RequirePackage{auto-package-install}` as the very first line of your
-document preamble. Make sure to compile with `--socket` (or
-`--shell-escape`), otherwise the package won't work.
+`\RequirePackage{network-install}` as the very first line of your
+document preamble. Make sure to compile with `--shell-escape`, otherwise
+the package won't work.
 
 
 Demonstration
