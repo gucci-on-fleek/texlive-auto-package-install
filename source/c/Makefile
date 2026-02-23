@@ -41,16 +41,11 @@ warning_c_flags := \
 
 # Debugging:
 #
-# -DDEBUG=1: Define the DEBUG macro so that we can check it in the C source.
-#
 # -O0: No optimizations, so that we can debug macro expansions.
 #
 # -g3 -ggdb3: Maximum debugging information.
 #
 # -fanalyzer: Run a static analyzer before compiling.
-#
-# -fsanitize=address,undefined,leak: Enable address, undefined behaviour, and
-#									 memory leak sanitizers.
 #
 # -fhardened: Enable extra security features, which should catch more bugs.
 #
@@ -60,7 +55,6 @@ debug_c_flags := \
 	-O0 \
 	-g3	-ggdb3 \
 	-fanalyzer \
-	-fsanitize=address,undefined,leak \
 	-fhardened -Wno-hardened \
 	-ftrivial-auto-var-init=pattern
 
@@ -77,24 +71,15 @@ release_c_flags := \
 	-fgraphite-identity \
 	-floop-nest-optimize
 
-# Libraries
-#
-# -lm: Link the math library.
-libraries := \
-	-lm
-
+# Set the CFLAGS variable
 ifndef mode
 	mode := debug
 endif
 
-ifndef override_c_flags
-	override_c_flags :=
-endif
-
 ifeq "${mode}" "release"
-    c_flags := ${base_c_flags} ${warning_c_flags} ${release_c_flags} ${override_c_flags} ${libraries}
+    CFLAGS ?= ${base_c_flags} ${warning_c_flags} ${release_c_flags}
 else ifeq "${mode}" "debug"
-    c_flags := ${base_c_flags} ${warning_c_flags} ${debug_c_flags} ${override_c_flags} ${libraries}
+    CFLAGS ?= ${base_c_flags} ${warning_c_flags} ${debug_c_flags}
 else
     $(error "Invalid mode: ${mode}")
 endif
@@ -106,7 +91,7 @@ all: lhydrogenlib.so third-party/libhydrogen/hydrogen.so
 
 # Build
 %.so: %.c
-	gcc $^ -o $@ ${c_flags} -fPIC -shared
+	gcc $^ -o $@ ${CFLAGS} -fPIC -shared
 
 # Clean
 .PHONY: clean

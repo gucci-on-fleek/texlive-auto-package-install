@@ -10,9 +10,15 @@
 ### Imports ###
 ###############
 
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from argparse import (
+    ArgumentDefaultsHelpFormatter,
+    ArgumentParser,
+    Namespace,
+)
+from ctypes import CDLL, c_uint8, cdll
 from gzip import compress as gzip_compress, decompress as gzip_decompress
 from lzma import decompress as lzma_decompress
+from os import environ
 from pathlib import Path
 from pprint import pp as pprint
 from re import MULTILINE, VERBOSE, compile as re_compile
@@ -58,6 +64,9 @@ class CTANRow(NamedTuple):
     revision: int
     """The SVN revision of the file, as an integer."""
 
+    hash: bytes
+    """The hash of the file contents, as bytes."""
+
 
 class ZipRow(NamedTuple):
     """A row in the exported filename database for a file from the zip file."""
@@ -67,6 +76,9 @@ class ZipRow(NamedTuple):
 
     revision: int
     """The SVN revision of the file, as an integer."""
+
+    hash: bytes
+    """The hash of the file contents, as bytes."""
 
     start_offset: int
     """The byte offset of the start of gzip-compressed file data in the zip file."""
@@ -83,17 +95,22 @@ FileList: TypeAlias = dict[str, list[FileEntry]]
 #################
 
 __VERSION__ = "0.1.2"  # %%version
+CONTEXT_LENGTH = 8
 DATABASE_FILENAME = "network-install.files.lut.gz"
 DEFAULT_MIRROR = "https://mirror.ctan.org"
 FILES_PATH = "/FILES.byname.gz"
 IGNORE_EXTENSIONS = {"pdf", "png", "jpg", "4ht"}
 IGNORE_PREFIXES = {"lwarp"}
+LIBHYDROGEN_CONTEXT = b"netinst1"
+SECRET_KEY_LENGTH = 32
+SIGNATURE_LENGTH = 64
 START_TIME = time()
 TLPDB_PATH = "/systems/texlive/tlnet/tlpkg/texlive.tlpdb.xz"
 TLPDB_REVISION_REGEX = re_compile(r"^revision (\d+)\s*$", MULTILINE)
 ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 ZIP_LOCAL_FILE_HEADER_SIZE = 30
 ZIP_NAME = "network-install.files.zip"
+HASH_SIZE_BYTES = 16  # The minimum
 
 TLPDB_FILE_REGEX = re_compile(
     r"""
@@ -209,6 +226,145 @@ def download_file(url: str) -> bytes:
         data = response.read()
     msg(f"Finished downloading {url}.")
     return data
+
+
+def lua_string(s: str | bytes) -> bytes:
+    """Converts a string to a Lua string literal.
+
+    Args:
+        s: The string to convert.
+
+    Returns:
+        The string converted to a Lua string literal, as bytes.
+    """
+
+    if isinstance(s, str):
+        s = s.encode("utf-8")
+
+    if (
+        (b'"' not in s)
+        and (b"\\" not in s)
+        and (b"\n" not in s)
+        and (b"\r" not in s)
+    ):
+        return b'"' + s + b'"'
+    elif (b"]]" not in s) and (not s.endswith(b"]")):
+        return b"[[" + s + b"]]"
+    elif b"]=]" not in s:
+        return b"[=[" + s + b"]=]"
+    else:
+        raise ValueError(
+            "String cannot be safely represented as a Lua string literal."
+        )
+
+
+def lua_key(s: bytes | str) -> bytes:
+    """Converts a string to a valid Lua table key.
+
+    Args:
+        s: The string to convert.
+
+    Returns:
+        The string converted to a valid Lua table key.
+    """
+    if isinstance(s, str):
+        s = s.encode("utf-8")
+
+    if s.isalpha():
+        return s
+    else:
+        s = lua_string(s)
+        if s.startswith(b"["):
+            return b"[ " + s + b" ]"
+        else:
+            return b"[" + s + b"]"
+
+
+#############################
+### libhydrogen Interface ###
+#############################
+
+libhydrogen: CDLL | None = None
+
+
+def initialize_libhydrogen(lib_path: Path) -> None:
+    """Initialize the libhydrogen library.
+
+    Args:
+        lib_path: The path to the hydrogen.so file.
+    """
+
+    # Load the library
+    global libhydrogen
+    libhydrogen = cdll.LoadLibrary(lib_path.as_posix())
+
+    # Initialize the library
+    result = libhydrogen.hydro_init()
+    if result != 0:
+        raise RuntimeError(f"Failed to initialize libhydrogen: {result}")
+
+
+def create_signature(message: bytes, secret_key: bytes) -> bytes:
+    """Create a signature for the given message.
+
+    Args:
+        message: The message to create a signature for.
+        secret_key: The secret key to use for creating the signature. Must be
+            32 bytes long.
+
+    Returns:
+        The signature as bytes, which will be 64 bytes long.
+    """
+
+    if libhydrogen is None:
+        raise RuntimeError("libhydrogen is not initialized.")
+
+    if len(secret_key) != SECRET_KEY_LENGTH:
+        raise ValueError(f"Secret key must be {SECRET_KEY_LENGTH} bytes long.")
+
+    if len(LIBHYDROGEN_CONTEXT) != CONTEXT_LENGTH:
+        raise ValueError(f"Context must be {CONTEXT_LENGTH} bytes long.")
+
+    signature = (c_uint8 * SIGNATURE_LENGTH)()
+    result = libhydrogen.hydro_sign_create(
+        signature,
+        message,
+        len(message),
+        LIBHYDROGEN_CONTEXT,
+        secret_key,
+    )
+    if result != 0:
+        raise RuntimeError(f"Failed to create signature: {result}")
+
+    return bytes(signature)
+
+
+def hash_message(message: bytes) -> bytes:
+    """Hash the given message using libhydrogen.
+
+    Args:
+        message: The message to hash.
+
+    Returns:
+        The hash of the message as bytes, which will be 16 bytes long.
+    """
+
+    if libhydrogen is None:
+        raise RuntimeError("libhydrogen is not initialized.")
+
+    hash = (c_uint8 * HASH_SIZE_BYTES)()
+    result = libhydrogen.hydro_hash_hash(
+        hash,
+        HASH_SIZE_BYTES,
+        message,
+        len(message),
+        LIBHYDROGEN_CONTEXT,
+        None,
+    )
+    if result != 0:
+        raise RuntimeError(f"Failed to hash message: {result}")
+
+    return bytes(hash)
 
 
 ##################################
@@ -376,15 +532,35 @@ def get_missing_ctan_files(
     return out
 
 
+def hash_file(texmf_dist: Path, path: str) -> bytes:
+    """Compute the hash of a file in the texmf-dist directory.
+
+    Args:
+        texmf_dist: The path to the texmf-dist directory on the local
+            filesystem.
+        path: The path to the file within texmf_dist.
+
+    Returns:
+        The hash of the file contents, as bytes.
+    """
+
+    with (texmf_dist / path).open("rb") as f:
+        contents = f.read()
+    return hash_message(contents)
+
+
 def get_found_ctan_files(
     tlpdb_files: FileList,
     ctan_files: FileList,
+    texmf_dist: Path,
 ) -> dict[str, CTANRow]:
     """Get the list of files that are in both the tlpdb and the ctan filelist.
 
     Args:
         tlpdb_files: The filelist extracted from the texlive.tlpdb file.
         ctan_files: The filelist extracted from the FILES.byname file.
+        texmf_dist: The path to the texmf-dist directory on the local
+            filesystem, used to compute the hashes of the files.
 
     Returns:
         A dictionary mapping file names to CTANRow objects representing the
@@ -410,10 +586,16 @@ def get_found_ctan_files(
             )
 
         # Otherwise, add the single entry for this file to the output list.
-        out[filename] = CTANRow(
-            path=ctan_entry.path,
-            revision=tlpdb_entry.revision,
-        )
+        try:
+            out[filename] = CTANRow(
+                path=ctan_entry.path,
+                revision=tlpdb_entry.revision,
+                hash=hash_file(texmf_dist, tlpdb_entry.path),
+            )
+        except IsADirectoryError:
+            # If the file is actually a directory, just skip it since we only
+            # care about files.
+            continue
 
     return out
 
@@ -421,12 +603,15 @@ def get_found_ctan_files(
 def get_zip_files(
     tlpdb_files: FileList,
     zip_path: Path,
+    texmf_dist: Path,
 ) -> dict[str, ZipRow]:
     """Get the list of files that are in the zip file.
 
     Args:
         tlpdb_files: The filelist extracted from the texlive.tlpdb file.
         zip_path: The path to the zip file containing the missing files.
+        texmf_dist: The path to the texmf-dist directory on the local
+            filesystem, used to compute the hashes of the files.
 
     Returns:
         A dictionary mapping file names to ZipRow objects representing the files
@@ -434,6 +619,9 @@ def get_zip_files(
     """
 
     zip_files: dict[str, ZipRow] = {}
+
+    with Path(zip_path).open("rb") as f:
+        zip_bytes = f.read()
 
     with ZipFile(zip_path, "r") as zip_file:
         for zip_info in zip_file.infolist():
@@ -468,6 +656,7 @@ def get_zip_files(
             zip_files[filename] = ZipRow(
                 path=filename,
                 revision=revision,
+                hash=hash_message(zip_bytes[start_offset:end_offset]),
                 start_offset=start_offset,
                 end_offset=end_offset,
             )
@@ -555,7 +744,7 @@ def create_zip(
 def save_database(
     output_file: Path,
     files: dict[str, DatabaseRow],
-    zip_path: Path,
+    secret_key: bytes,
 ) -> None:
     """Save the database to a compressed Lua table.
 
@@ -565,7 +754,7 @@ def save_database(
         files: The dictionary of DatabaseRow objects representing the files to
             include in the database.
 
-        zip_path: The path to the zip file containing the missing files.
+        secret_key: The secret key to use for signing the database, as bytes.
     """
 
     # Sort by revision and then by path to ensure deterministic output.
@@ -577,37 +766,62 @@ def save_database(
         ),
     )
 
-    lines = [
-        "return {",
+    output = [
+        b"return {",
     ]
+
     for filename, row in sorted_files:
+        # fmt: off
         if isinstance(row, CTANRow):
-            lines.append(
-                f'["{filename}"]={{source="ctan",path="{row.path}",revision={row.revision}}},'
-            )
+            output += [
+                lua_key(filename), b"={",
+                    b'source="ctan",',
+                    b"path=", lua_string(row.path), b",",
+                    b"revision=", str(row.revision).encode(), b",",
+                    b"hash=", lua_string(row.hash),
+                b"},",
+            ]
         elif isinstance(row, ZipRow):
-            lines.append(
-                f'["{filename}"]={{source="zip",path="{row.path}",revision={row.revision},offset={{{row.start_offset},{row.end_offset}}}}},'
-            )
+            output += [
+                lua_key(filename), b"={",
+                    b'source="zip",',
+                    b"path=", lua_string(row.path), b",",
+                    b"revision=", str(row.revision).encode(), b",",
+                    b"hash=", lua_string(row.hash), b",",
+                    lua_key("offset"), b"=", b"{",
+                        str(row.start_offset).encode(), b",",
+                        str(row.end_offset).encode(),
+                    b"}",
+                b"},",
+            ]
         else:
             raise ValueError(f"Invalid row type for file {filename}.")
-    lines.append("}")
+        # fmt: on
+    output.append(b"}")
 
     # Join the lines into a single string and encode it as bytes.
-    data = "".join(lines).encode("utf-8")
+    data = b"".join(output)
 
-    # Compress the data using gzip and write it to the output file.
+    # Compress the data using gzip.
     compressed_data = gzip_compress(data, compresslevel=9)
+
+    # Sign the compressed data
+    signature = create_signature(compressed_data, secret_key)
+
+    # Append the signature to the end of the compressed data and save it to the
+    # output file.
     with output_file.open("wb") as f:
         f.write(compressed_data)
+        f.write(signature)
 
 
-def run(
+def run(  # noqa: PLR0917 PLR0913
     output_directory: Path,
     mirror_url: str,
     texmf_dist: Path,
     generate_database: bool,
     generate_zip: bool,
+    secret_key: bytes,
 ) -> None:
     """Run the commands.
 
@@ -617,6 +831,7 @@ def run(
         texmf_dist: The path to the texmf-dist directory on the local filesystem.
         generate_database: Whether to generate the filename database.
         generate_zip: Whether to generate the zip file.
+        secret_key: The secret key to use for encryption, as bytes.
     """
 
     # Download the files
@@ -651,14 +866,22 @@ def run(
         msg("Generating database...")
 
         # Get the list of files needed
-        ctan_found = get_found_ctan_files(all_tlpdb_files, ctan_files)
-        zip_files = get_zip_files(zip_tlpdb_files, output_directory / ZIP_NAME)
+        ctan_found = get_found_ctan_files(
+            tlpdb_files=all_tlpdb_files,
+            ctan_files=ctan_files,
+            texmf_dist=texmf_dist,
+        )
+        zip_files = get_zip_files(
+            tlpdb_files=zip_tlpdb_files,
+            zip_path=output_directory / ZIP_NAME,
+            texmf_dist=texmf_dist,
+        )
 
         # Generate the filename database and save it to a file.
         save_database(
             output_file=output_directory / DATABASE_FILENAME,
             files=ctan_found | zip_files,
-            zip_path=output_directory / ZIP_NAME,
+            secret_key=secret_key,
         )
         msg("Finished generating database.")
 
@@ -676,6 +899,10 @@ def main() -> int:
         description="network-install filename database generator",
         formatter_class=ArgumentDefaultsHelpFormatter,
         suggest_on_error=True,
+        epilog="""environment variables:
+  $NETINST_SECRET_KEY: The secret key to use for encryption, specified as a hex
+                       string. This is required and must be 32 bytes long
+                       (64 hex characters).""",
     )
 
     parser.add_argument(
@@ -717,6 +944,13 @@ def main() -> int:
         help="Generate the zip file",
     )
 
+    parser.add_argument(
+        "--libhydrogen-path",
+        help="The path to hydrogen.so",
+        default=Path("./source/c/third-party/libhydrogen/hydrogen.so"),
+        type=Path,
+    )
+
     # Parse the arguments
     args: Namespace = parser.parse_args()
 
@@ -725,14 +959,23 @@ def main() -> int:
     generate_zip: bool = args.generate_zip.casefold() == "true"
     mirror_url: str = args.mirror
     texmf_dist: Path = args.texmf_dist
+    libhydrogen_path: Path = args.libhydrogen_path
+
+    try:
+        secret_key: bytes = bytes.fromhex(environ["NETINST_SECRET_KEY"])
+    except KeyError:
+        parser.error("The NETINST_SECRET_KEY environment variable is required.")
 
     # Run the commands
+    initialize_libhydrogen(libhydrogen_path)
+
     run(
         output_directory=output_directory,
         mirror_url=mirror_url,
         texmf_dist=texmf_dist,
         generate_database=generate_database,
         generate_zip=generate_zip,
+        secret_key=secret_key,
     )
 
     return 0

@@ -70,6 +70,7 @@ extend-ignore = [
     "F821", # undefined name
     "PLC0415", # import should be at the top-level of a file
     "PLR0912", # too many branches
+    "PLW0603", # global is discouraged
 ]
 
 # Don't fix unused imports, since it's really annoying to have them disappear
