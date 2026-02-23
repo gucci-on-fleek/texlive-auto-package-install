@@ -14,7 +14,13 @@ target_list = {}
 
 -- Tagging
 target_list.tag = orig_targets.tag
-tagfiles = { "source/*.*", "docs/**/*.*", "README.md", "build.lua" }
+tagfiles = {
+    "source/*.*",
+    "scripts/*.*",
+    "docs/**/*.*",
+    "README.md",
+    "build.lua",
+}
 
 function update_tag(name, content, version, date)
     if not version then
