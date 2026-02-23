@@ -1,5 +1,5 @@
--- texlive-auto-package-install
--- https://github.com/gucci-on-fleek/texlive-auto-package-install
+-- network-install
+-- https://github.com/gucci-on-fleek/network-install
 -- SPDX-License-Identifier: MPL-2.0+
 -- SPDX-FileCopyrightText: 2026 Max Chernoff
 
@@ -134,7 +134,7 @@ set_options(handle, {
     tcp_keepalive = true,
 
     -- Set a custom user agent
-    useragent = "texlive-auto-package-install/0.1.2 (+https://github.com/gucci-on-fleek/texlive-auto-package-install)", --%%version
+    useragent = "network-install/0.1.2 (+https://github.com/gucci-on-fleek/network-install)", --%%version
 
     -- Increase the buffer size to the maximum allowed by libcurl
     buffersize = 512 * 1000,

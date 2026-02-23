@@ -1,11 +1,11 @@
--- texlive-auto-package-install
--- https://github.com/gucci-on-fleek/texlive-auto-package-install
+-- network-install
+-- https://github.com/gucci-on-fleek/network-install
 -- SPDX-License-Identifier: MPL-2.0+
 -- SPDX-FileCopyrightText: 2026 Max Chernoff
 
 
 -- Initialization
-module = "texlive-auto-package-install"
+module = "network-install"
 local version = "0.2.1" --%%version
 local date = "2026-02-23" --%%dashdate
 

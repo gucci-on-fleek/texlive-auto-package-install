@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# texlive-auto-package-install
-# https://github.com/gucci-on-fleek/texlive-auto-package-install
+# network-install
+# https://github.com/gucci-on-fleek/network-install
 # SPDX-License-Identifier: MPL-2.0+
 # SPDX-FileCopyrightText: 2026 Max Chernoff
 

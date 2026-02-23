@@ -1,5 +1,5 @@
-# texlive-auto-package-install
-# https://github.com/gucci-on-fleek/texlive-auto-package-install
+# network-install
+# https://github.com/gucci-on-fleek/network-install
 # SPDX-License-Identifier: MPL-2.0+
 # SPDX-FileCopyrightText: 2026 Max Chernoff
 when:
@@ -27,8 +27,8 @@ steps:
       overwrite: false
       title: ./release.title
       files:
-        - texlive-auto-package-install-*.tds.zip
-        - texlive-auto-package-install-*.ctan.zip
+        - network-install-*.tds.zip
+        - network-install-*.ctan.zip
       file-exists: fail
       api_key:
         from_secret: GITHUB_TOKEN
