@@ -24,7 +24,7 @@ netinst = netinst or {} --- @diagnostic disable-line: global-element
 -- The module log level
 --- @type log_level
 --- @diagnostic disable-next-line: undefined-field
-local LOG_LEVEL = _G.LOG_LEVEL or "warning"
+_G.LOG_LEVEL = _G.LOG_LEVEL or "warning"
 
 -- Private table for utility functions used by other subpackages
 netinst._utils = {}

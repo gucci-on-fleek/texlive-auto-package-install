@@ -64,6 +64,13 @@ netinst._utils.debug("Using libcurl version %s", version_string)
 --- Curl Options ---
 --------------------
 
+local c_conversions = {
+    boolean = ffi.typeof("long"),
+    number  = ffi.typeof("long"),
+    string  = ffi.typeof("const char*"),
+    cdata   = ffi.typeof("const void*"),
+}
+
 --- Sets the options on a libcurl handle
 ---
 --- @param handle userdata The libcurl handle to set options on
@@ -79,18 +86,20 @@ local function set_options(handle, options)
             netinst._utils.error("Unknown libcurl option: " .. name)
         end
 
+        local c_value = c_conversions[type(value)](value)
+
         -- Set the option
-        local ok = curl.curl_easy_setopt(handle, option_constant, value)
+        local ok = curl.curl_easy_setopt(handle, option_constant, c_value)
 
         -- Check for errors
-        if ok ~= curl.CURLE_OK then
+        if ok == curl.CURLE_OK then
+            netinst._utils.debug(
+                "Set libcurl option %s to %s", name, tostring(value)
+            )
+        else
             netinst._utils.error(
                 "Failed to set libcurl option %s: %s",
                 name, ffi.string(curl.curl_easy_strerror(ok))
-            )
-        else
-            netinst._utils.debug(
-                "Set libcurl option %s to %s", name, tostring(value)
             )
         end
     end
@@ -118,7 +127,7 @@ set_options(handle, {
 
     -- Only allow HTTPS
     protocols_str = "https",
-    use_ssl = ffi.new("long", constants.CURLUSESSL_ALL),
+    use_ssl = constants.CURLUSESSL_ALL,
 
     -- Enable TCP keepalive
     tcp_keepalive = true,
@@ -130,7 +139,7 @@ set_options(handle, {
     buffersize = 512 * 1000,
 
     -- Don't follow redirects
-    followlocation = ffi.new("long", false),
+    followlocation = false,
     maxredirs = 0,
 })
 
