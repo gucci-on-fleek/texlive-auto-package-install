@@ -35,16 +35,34 @@ netinst._utils.pkg_name = pkg_name
 --- Constants ---
 -----------------
 
+local concat = table.concat
 local debug_prefix = "\x1b[0;36m"
 local debug_suffix = "\x1b[0m\n"
 local insert = table.insert
 local io_stderr = io.stderr
 local start_time = os.gettimeofday()
+local traceback = debug.traceback
 
 
 ------------------------
 --- Message Printing ---
 ------------------------
+
+--- Temporarily replaces the debug.traceback function with a function that
+--- returns its argument without a traceback.
+--- @type fun(message: string):string
+local without_traceback do
+    local saved_traceback = debug.traceback
+    local function restore_traceback(message)
+        debug.traceback = saved_traceback
+        return message
+    end
+
+    function without_traceback()
+        saved_traceback = debug.traceback
+        debug.traceback = restore_traceback
+    end
+end
 
 -- The message levels
 --- @alias log_level "debug" | "warning" | "error"
@@ -79,7 +97,40 @@ local message_printers = {
         luatexbase.module_warning(pkg_name, message)
     end,
     error = function(message)
-        luatexbase.module_error(pkg_name, message)
+        -- Make sure that the first line ends with a period
+        local lines = message:splitlines()
+        if not lines[1]:match("%.$") then
+            lines[1] = lines[1] .. "."
+        end
+
+        -- Add the header to the first line
+        lines[1] = ("! Package %s Error: %s"):format(pkg_name, lines[1])
+
+        -- Add a blank line after the first line
+        if lines[2] ~= "" then
+            insert(lines, 2, "")
+        end
+
+        -- Add a blank line after the last line
+        if lines[#lines] ~= "" then
+            insert(lines, "")
+        end
+
+        -- Add the traceback
+        insert(lines, "Traceback:")
+        for _, line in ipairs(traceback("", 3):splitlines()) do
+            line = line:gsub("%.%.%.[^:]*/([^:]*:)", "%1")
+            if line:match("^\t") then
+                insert(lines, (line:gsub("^\t", "    ")))
+            end
+        end
+
+        -- Show the message
+        texio.write_nl("term and log", "")
+        insert(lines, 1, "")
+        insert(lines, "")
+        without_traceback()
+        error(concat(lines, "\n"), 0)
     end,
 }
 

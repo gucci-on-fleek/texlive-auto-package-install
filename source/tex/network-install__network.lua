@@ -77,6 +77,7 @@ local c_conversions = {
 --- @param options table<string, boolean|integer|string|userdata>
 ---     A table of options to set, where the keys are the option names (without
 ---     the CURLOPT_ prefix) and the values are the option values.
+---
 --- @return nil
 local function set_options(handle, options)
     for name, value in pairs(options) do
