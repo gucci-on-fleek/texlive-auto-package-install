@@ -15,7 +15,6 @@ MAKEFLAGS += --no-builtin-rules
 .SHELLFLAGS := -euo pipefail -c
 SHELL := /bin/bash
 
-
 # Base C Flags:
 # "-pipe"         Use pipes internally (speeds up compilation).
 # "-std=gnu23"    Use the latest C standard, but with GNU extensions.
