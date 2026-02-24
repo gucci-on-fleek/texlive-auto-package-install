@@ -6,8 +6,8 @@
 
 -- Initialization
 module = "network-install"
-local version = "0.2.1" --%%version
-local date = "2026-02-23" --%%dashdate
+local version = "0.2.2" --%%version
+local date = "2026-02-24" --%%dashdate
 
 local orig_targets = target_list
 target_list = {}

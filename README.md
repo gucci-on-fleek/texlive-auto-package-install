@@ -84,4 +84,4 @@ version 4.0](https://creativecommons.org/licenses/by-sa/4.0/legalcode)
 or greater.
 
 ---
-_v0.2.1 (2026-02-23)_ <!--%%version %%dashdate-->
+_v0.2.2 (2026-02-24)_ <!--%%version %%dashdate-->
