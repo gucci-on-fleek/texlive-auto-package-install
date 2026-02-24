@@ -973,8 +973,8 @@ def main() -> int:
 
     parser.add_argument(
         "--libhydrogen-path",
-        help="The path to hydrogen.so",
-        default=Path("./source/c/third-party/libhydrogen/hydrogen.so"),
+        help="The path to libhydrogen.so",
+        default=Path("./build/libhydrogen.so"),
         type=Path,
     )
 

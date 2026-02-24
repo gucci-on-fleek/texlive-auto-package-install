@@ -74,8 +74,7 @@ function target_list.bundle.func()
 
     tdszip:close()
 
-    -- CTAN doesn't want this as per email from Petra and Karl
-    -- ctanzip:add("./" .. tdszipname, tdszipname, true)
+    ctanzip:add("./" .. tdszipname, tdszipname, true)
     ctanzip:close()
 
     local release_notes = io.open("release.title", "w")

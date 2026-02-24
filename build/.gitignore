@@ -2,15 +2,5 @@
 # https://github.com/gucci-on-fleek/network-install
 # SPDX-License-Identifier: MPL-2.0+
 # SPDX-FileCopyrightText: 2026 Max Chernoff
-*.aux
-*.log
-*.pdf
-*.tmp
-*.tua
-*.tuc
-*.zip
-documentation/lwc-manual.mkxl
-release.title
-temp*
-
-!texmf/**
+*
+!.gitignore

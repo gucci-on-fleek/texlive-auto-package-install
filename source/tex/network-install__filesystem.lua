@@ -46,9 +46,22 @@ local cache_root do
     for _, cache in ipairs(caches) do
         -- Make sure that we're allowed to write to this cache directory
         if not kpse.out_name_ok_silent_extended(cache) then
-            goto continue
+            netinst._utils.debug(
+                "kpse.out_name_ok_silent_extended failed: %s",
+                cache
+            )
+            if os.name == "windows" then
+                -- Hmm, this always fails on Wine for me, I wonder if it fails
+                -- on real Windows too.
+            else
+                goto continue
+            end
         end
         if not file.is_writable(cache) then
+            netinst._utils.debug(
+                "Directory is not writable: %s",
+                cache
+            )
             goto continue
         end
 
@@ -60,6 +73,11 @@ local cache_root do
             cache_root = cache_path
             break
         else
+            netinst._utils.debug(
+                "Failed to create cache directory: %s. Error: %s",
+                cache_path,
+                msg
+            )
             goto continue
         end
 
@@ -73,7 +91,8 @@ local cache_root do
         )
     else
         netinst._utils.error(
-            "No suitable cache directory found. Please make sure that you have a writable cache directory configured in TeX Live."
+            "No suitable cache directory found. Checked the following directories: %s",
+            table.concat(caches, ", ")
         )
     end
 end

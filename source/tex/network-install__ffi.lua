@@ -62,16 +62,36 @@ netinst._utils.debug("FFI loaded")
 ------------
 
 -- Load the libcurl shared library.
-local curl = ffi.load(netinst._utils.os_case {
+local curl_name = netinst._utils.os_case {
     linux   = "libcurl.so.4",
     mac     = "libcurl.dylib.4",
     windows = "libcurl.dll",
-})
+}
+local ok, curl = pcall(ffi.load, curl_name)
 
-if not curl then
-    netinst._utils.error("Failed to load libcurl shared library")
+if not ok then
+    -- Ok, try loading our own copy of libcurl.
+    local curl_path = kpse.find_file(curl_name, "texmfscripts")
+    if curl_path then
+        local ok
+        ok, curl = pcall(ffi.load, curl_path)
+        if not ok then
+            curl = nil
+        end
+    end
 end
-netinst._utils.debug("libcurl loaded")
+
+if curl then
+    netinst._utils.debug(
+        "Successfully loaded libcurl: %s",
+        curl_name
+    )
+else
+    netinst._utils.error(
+        "Failed to load libcurl. Searched for: %s",
+        curl_name
+    )
+end
 
 -- Search for the header file
 local header_path = kpse.find_file(netinst._utils.pkg_name .. "__curl.h")

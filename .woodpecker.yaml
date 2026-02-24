@@ -12,9 +12,7 @@ steps:
     pull: true
     commands:
       - set -euxo pipefail
-      - pushd ./source/c/
       - make -j4
-      - popd
       - export TEXMFHOME=$(realpath ./texmf)
       - l3build doc
       - l3build bundle
