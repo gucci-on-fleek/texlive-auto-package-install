@@ -76,6 +76,40 @@ without any errors:
 \end{document}
 \stopTEX
 
+\section{Platform Support}
+The following platforms are supported and have been extensively tested:
+
+\startitemize
+    \item \type{x86_64-linux}
+\stopitemize
+
+The following platforms are supported and have been partially tested:
+
+\startitemize
+    \item \type{windows}
+\stopitemize
+
+The following platforms are supported, but are completely untested:
+
+\startitemize
+    \item \type{aarch64-linux}
+    \item \type{armhf-linux}
+    \item \type{i386-linux}
+    \item \type{universal-darwin}
+    \item \type{x86_64-darwinlegacy}
+\stopitemize
+
+The following platforms {\em might} be supported, but might not work at all:
+
+\startitemize
+    \item \type{amd64-freebsd}
+    \item \type{amd64-netbsd}
+    \item \type{i386-freebsd}
+    \item \type{i386-netbsd}
+    \item \type{x86_64-linuxmusl}
+\stopitemize
+
+\type{libcurl} binaries are provided for Windows; users on all other platforms will need to supply them themselves.
 
 \page
 \setuplayout[

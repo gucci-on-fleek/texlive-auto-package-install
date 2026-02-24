@@ -44,6 +44,35 @@ without any errors:
 \end{document}
 ```
 
+Platform Support
+----------------
+
+The following platforms are supported and have been extensively tested:
+
+- `x86_64-linux`
+
+The following platforms are supported and have been partially tested:
+
+- `windows`
+
+The following platforms are supported, but are completely untested:
+
+- `aarch64-linux`
+- `armhf-linux`
+- `i386-linux`
+- `universal-darwin`
+- `x86_64-darwinlegacy`
+
+The following platforms _might_ be supported, but might not work at all:
+
+- `amd64-freebsd`
+- `amd64-netbsd`
+- `i386-freebsd`
+- `i386-netbsd`
+- `x86_64-linuxmusl`
+
+`libcurl` binaries are provided for Windows; users on all other
+platforms will need to supply them themselves.
 
 Licence
 -------
