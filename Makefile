@@ -116,7 +116,7 @@ build/libcurl.dll:
 	temp_dir=$$(mktemp -d)
 	trap "rm -rf $$temp_dir" EXIT
 	cd $$temp_dir
-	wget 'https://curl.se/windows/dl-8.18.0_4/curl-8.18.0_4-win64-mingw.zip'
+	curl --remote-name 'https://curl.se/windows/dl-8.18.0_4/curl-8.18.0_4-win64-mingw.zip'
 	unzip ./curl-*-win64-mingw.zip
 	cp ./curl-*-win64-mingw/bin/libcurl-x64.dll ${root_dir}/$@
 
